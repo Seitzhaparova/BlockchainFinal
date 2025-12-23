@@ -1,0 +1,339 @@
+:root {
+  --bg1: #ff8fb7;
+  --bg2: #7f5dff;
+  --card-bg: rgba(19, 16, 32, 0.78);
+  --accent: #ffd86b;
+  --accent-strong: #ff4da6;
+  --text-main: #fdf3ff;
+  --text-muted: #d9c9ff;
+  --border-soft: rgba(255, 255, 255, 0.18);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter",
+    "SF Pro Text", sans-serif;
+  background: radial-gradient(circle at top, var(--bg1), var(--bg2));
+  color: var(--text-main);
+}
+
+/* Корневой контейнер */
+
+.start-root {
+  min-height: 100vh;
+  padding: 24px 40px;
+  position: relative;
+  overflow: hidden;
+}
+
+.glow-circle {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(40px);
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.glow-1 {
+  width: 260px;
+  height: 260px;
+  background: rgba(255, 216, 107, 0.9);
+  top: -60px;
+  left: -40px;
+}
+
+.glow-2 {
+  width: 320px;
+  height: 320px;
+  background: rgba(255, 77, 166, 0.8);
+  bottom: -80px;
+  right: -40px;
+}
+
+/* Хедер */
+
+.start-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32px;
+  position: relative;
+  z-index: 2;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 22px;
+}
+
+.brand-mark {
+  background: linear-gradient(135deg, #ffd86b, #ff4da6);
+  border-radius: 999px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  color: #2a1024;
+  font-size: 18px;
+}
+
+.brand-name {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wallet-pill {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: rgba(6, 4, 19, 0.55);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.wallet-label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.wallet-address {
+  font-weight: 500;
+}
+
+.wallet-disconnected {
+  color: var(--text-muted);
+}
+
+/* Основной контент */
+
+.start-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.9fr);
+  gap: 32px;
+  align-items: stretch;
+  position: relative;
+  z-index: 2;
+}
+
+.start-card {
+  background: var(--card-bg);
+  border-radius: 24px;
+  padding: 28px 28px 22px;
+  border: 1px solid var(--border-soft);
+  box-shadow: 0 18px 45px rgba(11, 6, 40, 0.65);
+  backdrop-filter: blur(14px);
+  display: flex;
+  flex-direction: column;
+}
+
+.start-title {
+  font-size: 30px;
+  margin: 0 0 8px;
+}
+
+.start-subtitle {
+  margin: 0 0 24px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.start-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Кнопки */
+
+.btn {
+  border-radius: 999px;
+  padding: 10px 18px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: transform 0.12s ease, box-shadow 0.12s ease,
+    background 0.12s ease, color 0.12s ease;
+}
+
+.btn.primary {
+  background: linear-gradient(135deg, #ffd86b, #ff4da6);
+  color: #2b1220;
+  box-shadow: 0 10px 26px rgba(255, 104, 175, 0.5);
+}
+
+.btn.primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(255, 104, 175, 0.7);
+}
+
+.btn.outline {
+  background: transparent;
+  color: var(--text-main);
+  border: 1px solid var(--border-soft);
+}
+
+.btn.outline:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.btn.small {
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
+/* Блок с ID комнаты */
+
+.room-id-box {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px dashed var(--accent);
+  background: rgba(255, 216, 107, 0.06);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.room-id-label {
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.room-id-value {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.room-id-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* Подключение к комнате */
+
+.join-section {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.join-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-muted);
+}
+
+.join-row {
+  display: flex;
+  gap: 8px;
+}
+
+.join-input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: rgba(11, 6, 32, 0.9);
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.join-input::placeholder {
+  color: rgba(217, 201, 255, 0.7);
+}
+
+/* Статус */
+
+.status-bar {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Правая часть – силует / декор */
+
+.start-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding-right: 16px;
+}
+
+.side-tag {
+  align-self: flex-end;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(10, 4, 30, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.side-silhouette {
+  margin-top: 18px;
+  flex: 1;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: radial-gradient(circle at 20% 0%, #ffe9a3, #8a4bff);
+  box-shadow: 0 18px 40px rgba(33, 7, 58, 0.9);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 32px;
+  position: relative;
+  overflow: hidden;
+}
+
+.side-silhouette::before {
+  content: "";
+  position: absolute;
+  inset: 10%;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  opacity: 0.5;
+}
+
+.silhouette-inner {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+
+/* Адаптив */
+
+@media (max-width: 900px) {
+  .start-root {
+    padding: 18px 16px;
+  }
+
+  .start-main {
+    grid-template-columns: 1fr;
+  }
+
+  .start-side {
+    display: none;
+  }
+}
