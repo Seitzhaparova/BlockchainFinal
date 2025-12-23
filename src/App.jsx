@@ -1,38 +1,7 @@
-import React, { useState } from "react";
+import React from "react";
 import "./App.css";
-import StartPage from "./pages/StartPage";
-import GamePage from "./pages/GamePage";
+import StartPage from "./pages/Start_Page.jsx";
 
-function App() {
-  const [currentPage, setCurrentPage] = useState("start");
-  const [roomId, setRoomId] = useState("");
-
-  function handleJoinGame(joinedRoomId) {
-    setRoomId(joinedRoomId);
-    setCurrentPage("game");
-  }
-
-  function handleCreateGame(createdRoomId) {
-    setRoomId(createdRoomId);
-    setCurrentPage("game");
-  }
-
-  function handleExitGame() {
-    setCurrentPage("start");
-    setRoomId("");
-  }
-
-  return (
-    <>
-      {currentPage === "start" ? (
-        <StartPage
-          onJoinGame={handleJoinGame}
-          onCreateGame={handleCreateGame}
-        />
-      ) : (
-        <GamePage roomId={roomId} onExit={handleExitGame} />
-      )}
-    </>
-  );
+export default function App() {
+  return <StartPage />;
 }
-export default App;
