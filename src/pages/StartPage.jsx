@@ -1,9 +1,13 @@
+// StartPage.jsx without images
 import React, { useState } from "react";
-import "../App.css";
-import Character from "../components/Character";
-import girlImage from "../assets/characters/girl.png";
+import "../main_page.css";
 
-function StartPage({ onJoinGame, onCreateGame }) {
+function shortenAddress(address) {
+  if (!address) return "";
+  return address.slice(0, 6) + "..." + address.slice(-4);
+}
+
+export default function StartPage() {
   const [account, setAccount] = useState(null);
   const [roomIdInput, setRoomIdInput] = useState("");
   const [createdRoomId, setCreatedRoomId] = useState(null);
@@ -32,12 +36,14 @@ function StartPage({ onJoinGame, onCreateGame }) {
       return;
     }
 
+    // TODO: здесь потом будет вызов смарт-контракта:
+    // const id = await contract.createGame();
+    // setCreatedRoomId(id.toString());
+
+    // Временно — фейковый ID (6 цифр), чтобы проверить интерфейс:
     const fakeId = Math.floor(100000 + Math.random() * 900000).toString();
     setCreatedRoomId(fakeId);
     setStatus("Комната создана. Отправь ID другу.");
-
-    // Если нужно сразу перейти в игру
-    // onCreateGame(fakeId);
   }
 
   function handleJoinGame() {
@@ -50,17 +56,9 @@ function StartPage({ onJoinGame, onCreateGame }) {
       return;
     }
 
-    setStatus(`Подключаемся к комнате ${roomIdInput}...`);
-
-    // Переходим на страницу игры
-    if (onJoinGame) {
-      onJoinGame(roomIdInput);
-    }
-  }
-
-  function shortenAddress(address) {
-    if (!address) return "";
-    return address.slice(0, 6) + "..." + address.slice(-4);
+    // TODO: здесь потом будет логика подключения к комнате / переход на экран игры
+    console.log("Join room:", roomIdInput);
+    setStatus(`Пытаемся подключиться к комнате ${roomIdInput}...`);
   }
 
   return (
@@ -78,7 +76,9 @@ function StartPage({ onJoinGame, onCreateGame }) {
           {account ? (
             <>
               <span className="wallet-label">Кошелек</span>
-              <span className="wallet-address">{shortenAddress(account)}</span>
+              <span className="wallet-address">
+                {shortenAddress(account)}
+              </span>
             </>
           ) : (
             <span className="wallet-disconnected">Не подключен</span>
@@ -90,8 +90,8 @@ function StartPage({ onJoinGame, onCreateGame }) {
         <div className="start-card">
           <h1 className="start-title">Step on the Chain Runway</h1>
           <p className="start-subtitle">
-            Создай комнату, одень образ по теме и соревнуйся за модную славу и
-            игровой банк токенов.
+            Создай комнату, одень образ по теме и соревнуйся за модную славу
+            и игровой банк токенов.
           </p>
 
           <div className="start-actions">
@@ -134,30 +134,13 @@ function StartPage({ onJoinGame, onCreateGame }) {
         </div>
 
         <div className="start-side">
-          <div className="side-tag">Добро пожаловать!</div>
-
-          {/* Здесь девушка на стартовой странице */}
-          <Character
-            baseImage={girlImage}
-            width={280}
-            height={450}
-            className="main-character"
-          />
-
-          <div className="game-instructions">
-            <h4>Как играть:</h4>
-            <ol>
-              <li>Подключи кошелек</li>
-              <li>Создай или присоединись к комнате</li>
-              <li>Выбирай одежду для манекена</li>
-              <li>Голосуй за лучшие образы</li>
-              <li>Выигрывай токены!</li>
-            </ol>
+          {/* Здесь позже можно вставить манекен / превью образа */}
+          <div className="side-tag">Season 01 • Neon Glam</div>
+          <div className="side-silhouette">
+            <div className="silhouette-inner">Runway ready</div>
           </div>
         </div>
       </main>
     </div>
   );
 }
-
-export default StartPage;
