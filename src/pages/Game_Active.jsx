@@ -2,7 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "../main_page.css";
 
-import girlAvatar from "../assets/girl.png";
+// Заменить на существующий аватар из вашей коллекции
+import girlAvatar from "../assets/characters/girl1.png"; // Или любой другой из girl1, girl2, girl3, girl4
 
 function shortenAddress(address) {
   if (!address) return "";
@@ -49,7 +50,9 @@ export default function GameActive() {
 
   useEffect(() => {
     if (timeLeft === 0) {
-      setStatus("Время вышло. Образ зафиксирован/ожидание (логика будет позже).");
+      setStatus(
+        "Время вышло. Образ зафиксирован/ожидание (логика будет позже)."
+      );
     }
   }, [timeLeft]);
 
@@ -79,7 +82,9 @@ export default function GameActive() {
     if (selected.top) parts.push(`Top: ${selected.top}`);
     if (selected.skirt) parts.push(`Skirt: ${selected.skirt}`);
     if (selected.dress) parts.push(`Dress: ${selected.dress}`);
-    return parts.length ? parts.join(" • ") : "Выбери вещи справа, чтобы собрать образ.";
+    return parts.length
+      ? parts.join(" • ")
+      : "Выбери вещи справа, чтобы собрать образ.";
   }, [selected]);
 
   function pickItem(type, value) {
@@ -132,7 +137,9 @@ export default function GameActive() {
           <div className="active-top">
             <div className="active-leftTop">
               <div className="active-topicBubble">
-                <div className="active-bubbleTitle">I need to dress in style</div>
+                <div className="active-bubbleTitle">
+                  I need to dress in style
+                </div>
                 <div className="active-bubbleText">[{topic}]</div>
               </div>
 

@@ -1,5 +1,5 @@
-// StartPage.jsx without images
-import React, { useState } from "react";
+// src/pages/Start_Page.jsx
+import React, { useMemo, useState } from "react";
 import "../main_page.css";
 
 function shortenAddress(address) {
@@ -7,11 +7,27 @@ function shortenAddress(address) {
   return address.slice(0, 6) + "..." + address.slice(-4);
 }
 
+// Мок-курс: 1 ETH -> 100 TOKENS (поменяешь потом)
+const TOKENS_PER_ETH = 100;
+
 export default function StartPage() {
   const [account, setAccount] = useState(null);
+
   const [roomIdInput, setRoomIdInput] = useState("");
   const [createdRoomId, setCreatedRoomId] = useState(null);
   const [status, setStatus] = useState("");
+
+  // ===== NEW: баланс токенов игрока =====
+  const [tokenBalance, setTokenBalance] = useState(0);
+
+  // ===== NEW: покупка токенов (ввод ETH) =====
+  const [ethInput, setEthInput] = useState("");
+
+  const prettyTokens = useMemo(() => {
+    // чтобы не было длинных дробей
+    if (!Number.isFinite(tokenBalance)) return "0";
+    return String(Math.floor(tokenBalance));
+  }, [tokenBalance]);
 
   async function connectWallet() {
     if (!window.ethereum) {
@@ -24,6 +40,10 @@ export default function StartPage() {
       });
       setAccount(accounts[0]);
       setStatus("Кошелек подключен.");
+
+      // TODO позже:
+      // 1) получить баланс токенов из контракта по accounts[0]
+      // setTokenBalance(await contract.balanceOf(accounts[0]));
     } catch (err) {
       console.error(err);
       setStatus("Подключение отменено.");
@@ -36,11 +56,7 @@ export default function StartPage() {
       return;
     }
 
-    // TODO: здесь потом будет вызов смарт-контракта:
-    // const id = await contract.createGame();
-    // setCreatedRoomId(id.toString());
-
-    // Временно — фейковый ID (6 цифр), чтобы проверить интерфейс:
+    // TODO: вызов контракта createGame()
     const fakeId = Math.floor(100000 + Math.random() * 900000).toString();
     setCreatedRoomId(fakeId);
     setStatus("Комната создана. Отправь ID другу.");
@@ -56,9 +72,35 @@ export default function StartPage() {
       return;
     }
 
-    // TODO: здесь потом будет логика подключения к комнате / переход на экран игры
+    // TODO: joinGame(roomId) + переход на /lobby/:id
     console.log("Join room:", roomIdInput);
     setStatus(`Пытаемся подключиться к комнате ${roomIdInput}...`);
+  }
+
+  // ===== NEW: покупка токенов =====
+  async function handleBuyTokens() {
+    if (!account) {
+      setStatus("Сначала подключи кошелек.");
+      return;
+    }
+
+    const eth = Number(String(ethInput).replace(",", "."));
+
+    if (!Number.isFinite(eth) || eth <= 0) {
+      setStatus("Введи количество ETH больше 0.");
+      return;
+    }
+
+    // TODO: Реальная логика позже:
+    // await contract.buyTokens({ value: parseEther(ethInput) });
+    // const newBalance = await contract.balanceOf(account);
+    // setTokenBalance(Number(newBalance));
+
+    // Мок: начислим токены
+    const bought = eth * TOKENS_PER_ETH;
+    setTokenBalance((prev) => prev + bought);
+    setStatus(`Успешно куплено токенов: +${Math.floor(bought)} (мок)`);
+    setEthInput("");
   }
 
   return (
@@ -72,13 +114,19 @@ export default function StartPage() {
           <span className="brand-name">DressChain</span>
         </div>
 
+        {/* NEW: баланс + статус кошелька */}
         <div className="wallet-pill">
+          <div className="wallet-balance">
+            <span className="wallet-label">Balance</span>
+            <span className="wallet-balance-value">{prettyTokens} tokens</span>
+          </div>
+
+          <span className="wallet-sep" />
+
           {account ? (
             <>
               <span className="wallet-label">Кошелек</span>
-              <span className="wallet-address">
-                {shortenAddress(account)}
-              </span>
+              <span className="wallet-address">{shortenAddress(account)}</span>
             </>
           ) : (
             <span className="wallet-disconnected">Не подключен</span>
@@ -102,6 +150,26 @@ export default function StartPage() {
             <button className="btn outline" onClick={handleCreateGame}>
               Создать игру
             </button>
+
+            {/* NEW: покупка токенов */}
+            <div className="buy-section">
+              <label className="buy-label">Купить токен(ы)</label>
+              <div className="buy-row">
+                <input
+                  type="text"
+                  placeholder="Number of ETH"
+                  value={ethInput}
+                  onChange={(e) => setEthInput(e.target.value)}
+                  className="buy-input"
+                />
+                <button className="btn small buy-btn" onClick={handleBuyTokens}>
+                  Купить
+                </button>
+              </div>
+              <div className="buy-hint">
+                Покупка доступна только при подключённом кошельке и сумме ETH &gt; 0.
+              </div>
+            </div>
 
             {createdRoomId && (
               <div className="room-id-box">
@@ -134,8 +202,6 @@ export default function StartPage() {
         </div>
 
         <div className="start-side">
-          {/* Здесь позже можно вставить манекен / превью образа */}
-          <div className="side-tag">Season 01 • Neon Glam</div>
           <div className="side-silhouette">
             <div className="silhouette-inner">Runway ready</div>
           </div>

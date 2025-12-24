@@ -168,8 +168,8 @@ body {
   font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  transition: transform 0.12s ease, box-shadow 0.12s ease,
-    background 0.12s ease, color 0.12s ease;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease,
+    color 0.12s ease;
 }
 
 .btn.primary {
@@ -339,6 +339,75 @@ body {
     display: none;
   }
 }
+/* ===== START PAGE additions: balance + buy tokens ===== */
+
+.wallet-balance {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.wallet-balance-value {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.wallet-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.18);
+  margin: 0 2px;
+}
+
+/* Buy tokens block */
+.buy-section {
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.buy-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-muted);
+}
+
+.buy-row {
+  display: flex;
+  gap: 8px;
+}
+
+.buy-input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: rgba(11, 6, 32, 0.9);
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.buy-input::placeholder {
+  color: rgba(217, 201, 255, 0.7);
+}
+
+.buy-btn {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-main);
+  border: 1px solid var(--border-soft);
+}
+
+.buy-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.buy-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.95;
+}
 
 /* =========================
    GAME LOBBY (обновленная версия: без правого круга)
@@ -491,15 +560,15 @@ body,
 
 /* аватар */
 .avatar-img {
-  width: 56px;
-  height: 90px;
+  width: 60px;
+  height: 100px;
   object-fit: contain;
   display: block;
 }
 
 .avatar-placeholder {
-  width: 56px;
-  height: 90px;
+  width: 60px;
+  height: 100px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.15);
 }
@@ -550,7 +619,7 @@ body,
 .active-topicBubble {
   border-radius: 18px;
   padding: 12px 14px;
-  background: rgba(255, 155, 227, 0.20);
+  background: rgba(255, 155, 227, 0.2);
   border: 1px solid rgba(0, 0, 0, 0.06);
   color: rgba(36, 12, 58, 0.92);
 }
@@ -581,7 +650,7 @@ body,
   width: 160px;
   height: 260px;
   border-radius: 30px;
-  background: rgba(255, 77, 166, 0.70);
+  background: rgba(255, 77, 166, 0.7);
   position: relative;
 }
 
@@ -595,7 +664,7 @@ body,
   width: 70px;
   height: 70px;
   border-radius: 999px;
-  background: rgba(255, 77, 166, 0.70);
+  background: rgba(255, 77, 166, 0.7);
 }
 
 .active-miniProfile {
@@ -657,7 +726,11 @@ body,
   position: absolute;
   inset: 0;
   border-radius: 18px;
-  background: radial-gradient(circle at 20% 0%, rgba(255, 233, 163, 0.55), rgba(36, 12, 58, 0.22));
+  background: radial-gradient(
+    circle at 20% 0%,
+    rgba(255, 233, 163, 0.55),
+    rgba(36, 12, 58, 0.22)
+  );
   border: 1px dashed rgba(36, 12, 58, 0.25);
 }
 
@@ -680,7 +753,7 @@ body,
   width: 58px;
   height: 58px;
   border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.10);
+  border: 1px solid rgba(0, 0, 0, 0.1);
   background: rgba(255, 255, 255, 0.75);
   cursor: pointer;
   display: grid;
@@ -731,4 +804,87 @@ body,
     flex-direction: row;
     justify-content: flex-start;
   }
+}
+/* ===== Game Lobby Chat ===== */
+
+.lobby-chatbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 260px;
+  max-width: 640px;
+}
+
+.lobby-chat-input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.75);
+  color: rgba(36, 12, 58, 0.92);
+  font-size: 13px;
+  outline: none;
+}
+
+.lobby-chat-input::placeholder {
+  color: rgba(36, 12, 58, 0.45);
+}
+
+.lobby-chat-send {
+  background: rgba(36, 12, 58, 0.85);
+  color: #fff;
+  border: none;
+}
+
+.lobby-chat-send:hover {
+  background: rgba(36, 12, 58, 0.95);
+}
+
+/* Бабл над моделькой */
+.avatar-card {
+  position: relative; /* важно для абсолютного позиционирования чат-бабла */
+}
+
+.chat-bubble {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  max-width: 170px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 2px solid rgba(36, 12, 58, 0.85);
+  box-shadow: 0 12px 26px rgba(33, 7, 58, 0.18);
+  color: rgba(36, 12, 58, 0.92);
+  font-size: 12px;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.chat-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -10px;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 12px solid rgba(36, 12, 58, 0.85);
+}
+
+.chat-bubble::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-top: 11px solid rgba(255, 255, 255, 0.92);
 }
