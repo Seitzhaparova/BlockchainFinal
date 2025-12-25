@@ -1,5 +1,6 @@
 // src/pages/Game_Lobby.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import "../main_page.css";
 import girlAvatar from "../assets/characters/Body_1.png";
 
@@ -8,30 +9,26 @@ function shortenAddress(address) {
   return address.slice(0, 6) + "..." + address.slice(-4);
 }
 
-// Темы (пока локально, позже можно получать из контракта)
-const GAME_TOPICS = [
-  "NEON GLAM",
-  "CYBER FAIRY",
-  "FUTURISTIC RUNWAY",
-  "Y2K ICON",
-  "DARK ELEGANCE",
-];
-
+const GAME_TOPICS = ["NEON GLAM", "CYBER FAIRY", "FUTURISTIC RUNWAY", "Y2K ICON", "DARK ELEGANCE"];
 function getRandomTopic() {
   return GAME_TOPICS[Math.floor(Math.random() * GAME_TOPICS.length)];
 }
 
+function getEthereum() {
+  const eth = window.ethereum;
+  if (!eth) return null;
+  if (Array.isArray(eth.providers)) return eth.providers.find((p) => p.isMetaMask) || eth.providers[0];
+  return eth;
+}
+
 export default function GameLobby() {
+  const navigate = useNavigate();
+  const { roomId } = useParams(); // ✅ /lobby/:roomId
+
   const [account, setAccount] = useState(null);
+  const [maxPlayers, setMaxPlayers] = useState(4);
+  const [topic, setTopic] = useState("—");
 
-  // Мок-данные комнаты
-  const [roomId] = useState("482913");
-  const [maxPlayers] = useState(4);
-
-  // Тема — рандом (позже фиксировать на createGame)
-  const [topic] = useState(getRandomTopic());
-
-  // Дефолт: хост уже в лобби (как после CREATE GAME)
   const [players, setPlayers] = useState([
     { address: "HOST", role: "HOST" },
     { address: null, role: "EMPTY" },
@@ -41,50 +38,123 @@ export default function GameLobby() {
 
   const [status, setStatus] = useState("");
 
-  const filledCount = useMemo(
-    () => players.filter((p) => !!p.address).length,
-    [players]
-  );
+  // Load room meta (mock) from localStorage by roomId
+  useEffect(() => {
+    if (!roomId) return;
 
+    const raw = localStorage.getItem(`dc_room_${roomId}`);
+    if (raw) {
+      try {
+        const meta = JSON.parse(raw);
+        const t = meta?.topic || getRandomTopic();
+        const host = meta?.host || "HOST";
+        const mp = Number(meta?.maxPlayers) || 4;
+
+        setTopic(t);
+        setMaxPlayers(mp);
+
+        const emptySlots = Array.from({ length: Math.max(0, mp - 1) }, () => ({
+          address: null,
+          role: "EMPTY",
+        }));
+
+        setPlayers([{ address: host, role: "HOST" }, ...emptySlots].slice(0, mp));
+      } catch {
+        setTopic(getRandomTopic());
+      }
+    } else {
+      // no meta in this browser -> still show lobby with random topic
+      setTopic(getRandomTopic());
+      setMaxPlayers(4);
+      setPlayers([
+        { address: "HOST", role: "HOST" },
+        { address: null, role: "EMPTY" },
+        { address: null, role: "EMPTY" },
+        { address: null, role: "EMPTY" },
+      ]);
+    }
+  }, [roomId]);
+
+  // Auto-check wallet (no popup)
+  useEffect(() => {
+    const eth = getEthereum();
+    if (!eth) return;
+
+    let mounted = true;
+
+    async function init() {
+      try {
+        const accounts = await eth.request({ method: "eth_accounts" });
+        if (!mounted) return;
+        setAccount(accounts?.[0] ?? null);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    init();
+
+    const onAccountsChanged = (accs) => {
+      setAccount(accs?.[0] ?? null);
+      setStatus(accs?.[0] ? "Аккаунт изменён." : "Кошелёк отключён.");
+    };
+
+    eth.on?.("accountsChanged", onAccountsChanged);
+
+    return () => {
+      mounted = false;
+      eth.removeListener?.("accountsChanged", onAccountsChanged);
+    };
+  }, []);
+
+  const filledCount = useMemo(() => players.filter((p) => !!p.address).length, [players]);
   const hostAddress = useMemo(() => players?.[0]?.address || "—", [players]);
 
   const isHost = useMemo(() => {
     if (!account) return false;
-    const h = players?.[0]?.address;
-    if (!h) return false;
-    if (h === "HOST") return true; // заглушка до реального адреса
-    return account.toLowerCase() === h.toLowerCase();
-  }, [account, players]);
+    if (!hostAddress) return false;
+    if (hostAddress === "HOST") return true; // placeholder until a real host connects
+    return account.toLowerCase() === hostAddress.toLowerCase();
+  }, [account, hostAddress]);
 
   async function connectWallet() {
-    if (!window.ethereum) {
-      setStatus("Установи MetaMask, чтобы подключить кошелек.");
+    const eth = getEthereum();
+    if (!eth) {
+      setStatus("MetaMask не найден. Установи расширение MetaMask.");
       return;
     }
+
     try {
-      const accounts = await window.ethereum.request({
-        method: "eth_request_accounts",
-      });
-      const acc = accounts[0];
+      const accounts = await eth.request({ method: "eth_requestAccounts" });
+      const acc = accounts?.[0] ?? null;
+      if (!acc) return;
+
       setAccount(acc);
       setStatus("Кошелек подключен.");
 
       setPlayers((prev) => {
         const next = [...prev];
 
-        // Если хост был заглушкой — заменяем на реальный адрес
+        // If host is placeholder -> host becomes this acc (and persist)
         if (next[0]?.address === "HOST") {
           next[0] = { address: acc, role: "HOST" };
+          try {
+            const raw = localStorage.getItem(`dc_room_${roomId}`);
+            const meta = raw ? JSON.parse(raw) : {};
+            meta.roomId = roomId;
+            meta.host = acc;
+            meta.topic = meta.topic || topic;
+            meta.maxPlayers = meta.maxPlayers || maxPlayers;
+            localStorage.setItem(`dc_room_${roomId}`, JSON.stringify(meta));
+          } catch {}
           return next;
         }
 
-        // Если уже есть в лобби — ничего не делаем
-        const exists = next.some(
-          (p) => p.address && p.address.toLowerCase?.() === acc.toLowerCase()
-        );
+        // Already in lobby?
+        const exists = next.some((p) => p.address && p.address.toLowerCase?.() === acc.toLowerCase());
         if (exists) return next;
 
-        // Иначе — занимает первый свободный слот
+        // Take first empty slot
         const idx = next.findIndex((p) => !p.address);
         if (idx !== -1) next[idx] = { address: acc, role: "PLAYER" };
         else setStatus("Комната заполнена.");
@@ -92,22 +162,22 @@ export default function GameLobby() {
       });
     } catch (err) {
       console.error(err);
-      setStatus("Подключение отменено.");
+      if (err?.code === 4001) setStatus("Подключение отменено пользователем.");
+      else setStatus("Ошибка подключения кошелька.");
     }
   }
 
   function handleStartGame() {
     if (!account) return setStatus("Сначала подключи кошелек.");
     if (!isHost) return setStatus("Стартовать игру может только host.");
-    if (filledCount < 2) return setStatus("Нужно минимум 2 игрока, чтобы начать.");
+    // if (filledCount < 2) return setStatus("Нужно минимум 2 игрока, чтобы начать."); UNCOMMENT THIS FOR MULTIPLAYER
 
-    // TODO: startGame(roomId) + переход на Game_Active.jsx
-    setStatus("Игра стартует... (позже будет переход на Game_Active.jsx)");
-    console.log("START GAME room:", roomId);
+    // ✅ go to active page
+    navigate(`/active/${roomId}`);
   }
 
   function handleCopyRoomId() {
-    navigator.clipboard?.writeText(roomId);
+    navigator.clipboard?.writeText(roomId || "");
     setStatus("ID комнаты скопирован.");
   }
 
@@ -116,7 +186,6 @@ export default function GameLobby() {
       <div className="glow-circle glow-1" />
       <div className="glow-circle glow-2" />
 
-      {/* Один хедер (без дублей логотипа/кошелька) */}
       <header className="start-header">
         <div className="brand">
           <span className="brand-mark">★</span>
@@ -139,11 +208,14 @@ export default function GameLobby() {
         </div>
       </header>
 
-      {/* Только левый блок на всю ширину (правый круг убран) */}
       <main className="lobby-main">
         <div className="lobby-body">
           <section className="lobby-left">
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <button className="btn outline small" onClick={() => navigate("/")}>
+                ← Back
+              </button>
+
               <button className="btn outline small" onClick={connectWallet}>
                 {account ? "Кошелек подключен" : "Подключить кошелек"}
               </button>
@@ -176,7 +248,7 @@ export default function GameLobby() {
               </div>
             </div>
 
-            <div className="lobby-players">
+            <div className="lobby-players" style={{ gridTemplateColumns: `repeat(${Math.min(4, maxPlayers)}, minmax(0, 1fr))` }}>
               {players.map((p, idx) => {
                 const filled = !!p.address;
                 const you =
@@ -196,11 +268,7 @@ export default function GameLobby() {
 
                 return (
                   <div key={idx} className={`avatar-card ${filled ? "filled" : ""}`}>
-                    {filled ? (
-                      <img src={girlAvatar} alt="player" className="avatar-img" />
-                    ) : (
-                      <div className="avatar-placeholder" />
-                    )}
+                    {filled ? <img src={girlAvatar} alt="player" className="avatar-img" /> : <div className="avatar-placeholder" />}
 
                     <div className="bubble">
                       <div className="bubble-title">
@@ -224,16 +292,8 @@ export default function GameLobby() {
                 START GAME
               </button>
 
-              {!account && (
-                <div className="lobby-note">
-                  Сначала подключи кошелек, чтобы занять слот.
-                </div>
-              )}
-              {account && !isHost && (
-                <div className="lobby-note">
-                  Ты в лобби как игрок — жди, пока host нажмёт START.
-                </div>
-              )}
+              {!account && <div className="lobby-note">Сначала подключи кошелек, чтобы занять слот.</div>}
+              {account && !isHost && <div className="lobby-note">Ты в лобби как игрок — жди, пока host нажмёт START.</div>}
             </div>
 
             {status && <div className="status-bar">{status}</div>}

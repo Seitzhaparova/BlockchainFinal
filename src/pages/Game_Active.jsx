@@ -1,6 +1,8 @@
 // src/pages/Game_Active.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import "../main_page.css";
+
 import iconAccessories from "../assets/icons/accessories.png";
 import iconAppearance from "../assets/icons/appearence.png";
 import iconBottom from "../assets/icons/bottom.png";
@@ -41,8 +43,6 @@ const DRESS_MAP = import.meta.glob("../assets/clothes/dress/*.png", {
  * Accessories:
  * - supports both flat:   src/assets/accessories/*.png
  * - and nested folders:   src/assets/accessories/<type>/*.png
- * Types detected by folder name OR filename keywords:
- *   hairclips, headphones, necklace, stockings, socks
  */
 const ACCESSORIES_MAP = import.meta.glob("../assets/accessories/**/*.png", {
   eager: true,
@@ -149,56 +149,32 @@ async function scanBodyMeta(bodyUrl) {
     };
   }
 
-  // HEAD: top-center band (avoid arms)
   const head =
-    scanRegionBBox(
-      Math.floor(w * 0.35),
-      0,
-      Math.floor(w * 0.68),
-      Math.floor(h * 0.18)
-    ) ?? {
+    scanRegionBBox(Math.floor(w * 0.35), 0, Math.floor(w * 0.68), Math.floor(h * 0.18)) ?? {
       left: w * 0.45,
       right: w * 0.65,
       top: 0,
       bottom: h * 0.12,
     };
 
-  // TORSO: middle band (avoid legs + most arms)
   const torso =
-    scanRegionBBox(
-      Math.floor(w * 0.30),
-      Math.floor(h * 0.16),
-      Math.floor(w * 0.70),
-      Math.floor(h * 0.55)
-    ) ?? {
+    scanRegionBBox(Math.floor(w * 0.30), Math.floor(h * 0.16), Math.floor(w * 0.70), Math.floor(h * 0.55)) ?? {
       left: w * 0.38,
       right: w * 0.62,
       top: h * 0.2,
       bottom: h * 0.55,
     };
 
-  // HIPS: waist/hip zone (for Down anchoring)
   const hips =
-    scanRegionBBox(
-      Math.floor(w * 0.30),
-      Math.floor(h * 0.30),
-      Math.floor(w * 0.70),
-      Math.floor(h * 0.66)
-    ) ?? {
+    scanRegionBBox(Math.floor(w * 0.30), Math.floor(h * 0.30), Math.floor(w * 0.70), Math.floor(h * 0.66)) ?? {
       left: w * 0.38,
       right: w * 0.62,
       top: h * 0.33,
       bottom: h * 0.62,
     };
 
-  // LOWER: legs zone (for shoes / stockings / socks anchoring)
   const lower =
-    scanRegionBBox(
-      Math.floor(w * 0.25),
-      Math.floor(h * 0.42),
-      Math.floor(w * 0.75),
-      Math.floor(h * 0.98)
-    ) ?? {
+    scanRegionBBox(Math.floor(w * 0.25), Math.floor(h * 0.42), Math.floor(w * 0.75), Math.floor(h * 0.98)) ?? {
       left: w * 0.35,
       right: w * 0.65,
       top: h * 0.45,
@@ -211,7 +187,6 @@ async function scanBodyMeta(bodyUrl) {
 function detectAccessoryType(assetKey, pretty) {
   const k = (assetKey || "").toLowerCase();
   const p = (pretty || "").toLowerCase();
-
   const has = (s) => k.includes(s) || p.includes(s);
 
   if (has("/hairclips/") || has("hairclip") || has("clip")) return "hairclips";
@@ -219,45 +194,34 @@ function detectAccessoryType(assetKey, pretty) {
   if (has("/necklace/") || has("necklace")) return "necklace";
   if (has("/stockings/") || has("stocking") || has("stockings")) return "stockings";
   if (has("/socks/") || has("sock") || has("socks")) return "socks";
-
   return "misc";
 }
 
 export default function GameActive() {
-  // ======================
-  // TUNING CONSTANTS (NUDGE apparatus)
-  // ======================
+  const navigate = useNavigate();
+  const { roomId } = useParams(); // ✅ room from /active/:roomId
 
-  // UI stage size (in UI px)
+  // ======================
+  // TUNING CONSTANTS
+  // ======================
   const STAGE_W = 260;
   const STAGE_H = 420;
 
-  // ---- Z ORDER ----
   const Z_BODY = 1;
-
-  // Leg accessories must be UNDER jeans (and can be under dress).
   const Z_STOCKINGS = 10;
   const Z_SOCKS = 11;
-
-  // Shoes have two regimes:
-  // - under jeans (jeans cover boot shaft)
-  // - above all for skirt/dress/no bottom
   const Z_SHOES_UNDER_PANTS = 12;
   const Z_DOWN = 20;
-
   const Z_UP = 30;
   const Z_DRESS = 30;
-
   const Z_NECKLACE = 33;
   const Z_HAIR = 40;
-  const Z_HEAD_ACCESSORY = 45; // hairclips + headphones
+  const Z_HEAD_ACCESSORY = 45;
   const Z_SHOES_OVER_ALL = 50;
 
-  // ---- Hair (your tuned values) ----
-  const HAIR_X_NUDGE = 60; // + => right (BODY px)
-  const HAIR_Y_NUDGE = 10; // + => down  (BODY px)
+  const HAIR_X_NUDGE = 60;
+  const HAIR_Y_NUDGE = 10;
 
-  // ---- UP: two regimes (SHORT vs LONG sleeves) ----
   const UP_SHORT_X_NUDGE = 50;
   const UP_SHORT_Y_NUDGE = 0;
   const UP_SHORT_WIDTH_FACTOR = 1.35;
@@ -266,25 +230,22 @@ export default function GameActive() {
   const UP_LONG_Y_NUDGE = 0;
   const UP_LONG_WIDTH_FACTOR = 2.15;
 
-  // ---- DOWN: two regimes (JEANS vs SKIRT) ----
   const JEANS_X_NUDGE = 180;
   const JEANS_Y_NUDGE = 320;
   const JEANS_WIDTH_FACTOR = 1.75;
 
   const SKIRT_X_NUDGE = -35;
   const SKIRT_Y_NUDGE = 320;
-  const SKIRT_WIDTH_FACTOR = 1.40;
+  const SKIRT_WIDTH_FACTOR = 1.4;
 
-  // ---- DRESS: two regimes (WITH sleeves vs NO sleeves) ----
   const DRESS_SLEEVES_X_NUDGE = 200;
   const DRESS_SLEEVES_Y_NUDGE = 100;
-  const DRESS_SLEEVES_WIDTH_FACTOR = 2.40;
+  const DRESS_SLEEVES_WIDTH_FACTOR = 2.4;
 
   const DRESS_NO_SLEEVES_X_NUDGE = 0;
   const DRESS_NO_SLEEVES_Y_NUDGE = 130;
-  const DRESS_NO_SLEEVES_WIDTH_FACTOR = 1.60;
+  const DRESS_NO_SLEEVES_WIDTH_FACTOR = 1.6;
 
-  // ---- SHOES: two regimes (SHORT vs LONG boots) ----
   const SHOES_SHORT_X_NUDGE = 260;
   const SHOES_SHORT_Y_NUDGE = 1465;
   const SHOES_SHORT_WIDTH_FACTOR = 1.35;
@@ -293,10 +254,9 @@ export default function GameActive() {
   const SHOES_LONG_Y_NUDGE = 1060;
   const SHOES_LONG_WIDTH_FACTOR = 1.45;
 
-  // ---- ACCESSORIES (each: x, y, widthFactor) ----
   const HAIRCLIPS_X_NUDGE = 70;
   const HAIRCLIPS_Y_NUDGE = 130;
-  const HAIRCLIPS_WIDTH_FACTOR = 0.90;
+  const HAIRCLIPS_WIDTH_FACTOR = 0.9;
 
   const HEADPHONES_X_NUDGE = -65;
   const HEADPHONES_Y_NUDGE = 500;
@@ -304,7 +264,7 @@ export default function GameActive() {
 
   const NECKLACE_X_NUDGE = 90;
   const NECKLACE_Y_NUDGE = -250;
-  const NECKLACE_WIDTH_FACTOR = 0.50;
+  const NECKLACE_WIDTH_FACTOR = 0.5;
 
   const STOCKINGS_X_NUDGE = 195;
   const STOCKINGS_Y_NUDGE = 285;
@@ -318,23 +278,29 @@ export default function GameActive() {
   // State
   // ======================
   const [account, setAccount] = useState(null);
-
-  const [roomId] = useState("482913");
-  const [topic] = useState("DARK ELEGANCE");
-
+  const [topic, setTopic] = useState("—");
   const [timeLeft, setTimeLeft] = useState(120);
+  const [status, setStatus] = useState("");
+
+  // ✅ take topic from localStorage by roomId if exists (optional)
+  useEffect(() => {
+    if (!roomId) return;
+    try {
+      const raw = localStorage.getItem(`dc_room_${roomId}`);
+      if (!raw) return;
+      const meta = JSON.parse(raw);
+      if (meta?.topic) setTopic(meta.topic);
+    } catch {}
+  }, [roomId]);
+
   useEffect(() => {
     if (timeLeft <= 0) return;
     const id = setInterval(() => setTimeLeft((t) => (t > 0 ? t - 1 : 0)), 1000);
     return () => clearInterval(id);
   }, [timeLeft]);
 
-  const timeIsUp = timeLeft <= 0;
-  const [status, setStatus] = useState("");
   useEffect(() => {
-    if (timeLeft === 0) {
-      setStatus("Время вышло. Образ зафиксирован/ожидание (логика будет позже).");
-    }
+    if (timeLeft === 0) setStatus("Время вышло. Образ зафиксирован/ожидание (логика будет позже).");
   }, [timeLeft]);
 
   async function connectWallet() {
@@ -343,7 +309,7 @@ export default function GameActive() {
       return;
     }
     try {
-      const accounts = await window.ethereum.request({ method: "eth_request_accounts" });
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
       setAccount(accounts[0]);
       setStatus("Кошелек подключен.");
     } catch (err) {
@@ -351,6 +317,8 @@ export default function GameActive() {
       setStatus("Подключение отменено.");
     }
   }
+
+  const timeIsUp = timeLeft <= 0;
 
   // Build asset lists
   const assets = useMemo(() => {
@@ -368,15 +336,7 @@ export default function GameActive() {
     const dress = buildAssetList(DRESS_MAP);
 
     const accessoriesAll = buildAssetList(ACCESSORIES_MAP);
-
-    const accessories = {
-      hairclips: [],
-      headphones: [],
-      necklace: [],
-      stockings: [],
-      socks: [],
-      misc: [],
-    };
+    const accessories = { hairclips: [], headphones: [], necklace: [], stockings: [], socks: [], misc: [] };
     for (const it of accessoriesAll) {
       const t = detectAccessoryType(it.key, it.pretty);
       accessories[t].push(it);
@@ -386,40 +346,19 @@ export default function GameActive() {
   }, []);
 
   // url -> pretty name maps (for kind detection)
-  const downNameByUrl = useMemo(() => {
-    const m = new Map();
-    for (const it of assets.down) m.set(it.url, it.pretty);
-    return m;
-  }, [assets.down]);
-
-  const upNameByUrl = useMemo(() => {
-    const m = new Map();
-    for (const it of assets.up) m.set(it.url, it.pretty);
-    return m;
-  }, [assets.up]);
-
-  const dressNameByUrl = useMemo(() => {
-    const m = new Map();
-    for (const it of assets.dress) m.set(it.url, it.pretty);
-    return m;
-  }, [assets.dress]);
-
-  const shoesNameByUrl = useMemo(() => {
-    const m = new Map();
-    for (const it of assets.shoes) m.set(it.url, it.pretty);
-    return m;
-  }, [assets.shoes]);
+  const downNameByUrl = useMemo(() => new Map(assets.down.map((it) => [it.url, it.pretty])), [assets.down]);
+  const upNameByUrl = useMemo(() => new Map(assets.up.map((it) => [it.url, it.pretty])), [assets.up]);
+  const dressNameByUrl = useMemo(() => new Map(assets.dress.map((it) => [it.url, it.pretty])), [assets.dress]);
+  const shoesNameByUrl = useMemo(() => new Map(assets.shoes.map((it) => [it.url, it.pretty])), [assets.shoes]);
 
   // Selected outfit (store URLs)
   const [selected, setSelected] = useState(() => ({
     body: assets.bodies?.[0]?.url ?? null,
     hair: assets.hairs?.[0]?.url ?? null,
-
     shoes: null,
     up: null,
     down: null,
     dress: null,
-
     hairclips: null,
     headphones: null,
     necklace: null,
@@ -435,7 +374,6 @@ export default function GameActive() {
       up: prev.up ?? null,
       down: prev.down ?? null,
       dress: prev.dress ?? null,
-
       hairclips: prev.hairclips ?? null,
       headphones: prev.headphones ?? null,
       necklace: prev.necklace ?? null,
@@ -445,7 +383,7 @@ export default function GameActive() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assets.bodies?.length, assets.hairs?.length]);
 
-  const [panel, setPanel] = useState("appearance"); // appearance | shoes | up | down | dress | accessories
+  const [panel, setPanel] = useState("appearance");
 
   function pickBody(url) {
     if (timeIsUp) return;
@@ -461,30 +399,16 @@ export default function GameActive() {
   }
   function pickUp(url) {
     if (timeIsUp) return;
-    setSelected((prev) => ({
-      ...prev,
-      up: prev.up === url ? null : url,
-      dress: null,
-    }));
+    setSelected((prev) => ({ ...prev, up: prev.up === url ? null : url, dress: null }));
   }
   function pickDown(url) {
     if (timeIsUp) return;
-    setSelected((prev) => ({
-      ...prev,
-      down: prev.down === url ? null : url,
-      dress: null,
-    }));
+    setSelected((prev) => ({ ...prev, down: prev.down === url ? null : url, dress: null }));
   }
   function pickDress(url) {
     if (timeIsUp) return;
-    setSelected((prev) => ({
-      ...prev,
-      dress: prev.dress === url ? null : url,
-      up: null,
-      down: null,
-    }));
+    setSelected((prev) => ({ ...prev, dress: prev.dress === url ? null : url, up: null, down: null }));
   }
-
   function pickAccessory(type, url) {
     if (timeIsUp) return;
     setSelected((prev) => ({ ...prev, [type]: prev[type] === url ? null : url }));
@@ -502,27 +426,24 @@ export default function GameActive() {
     if (selected.body) parts.push("Body");
     if (selected.hair) parts.push("Hair");
     if (selected.shoes) parts.push("Shoes");
-
     if (selected.dress) parts.push("Dress");
     else {
       if (selected.up) parts.push("Up");
       if (selected.down) parts.push("Down");
     }
-
     if (selected.hairclips) parts.push("Hairclips");
     if (selected.headphones) parts.push("Headphones");
     if (selected.necklace) parts.push("Necklace");
     if (selected.stockings) parts.push("Stockings");
     if (selected.socks) parts.push("Socks");
-
     return parts.length ? parts.join(" • ") : "Выбери вещи справа, чтобы собрать образ.";
   }, [selected]);
 
   // ===========================
-  // Scan + caches (sizes / body meta)
+  // Scan + caches
   // ===========================
   const metaCacheRef = useRef(new Map());
-  const sizeCacheRef = useRef(new Map()); // url -> {w,h}
+  const sizeCacheRef = useRef(new Map());
 
   const [bodyMeta, setBodyMeta] = useState(null);
 
@@ -575,110 +496,49 @@ export default function GameActive() {
 
   useEffect(() => {
     let cancelled = false;
-    async function run() {
-      try {
-        const s = await getSizeCached(selected.hair);
-        if (!cancelled) setHairSize(s);
-      } catch (e) {
-        console.error("hair load error:", e);
-        if (!cancelled) setHairSize(null);
-      }
-    }
-    run();
-    return () => {
-      cancelled = true;
-    };
+    getSizeCached(selected.hair).then((s) => !cancelled && setHairSize(s)).catch(() => !cancelled && setHairSize(null));
+    return () => (cancelled = true);
   }, [selected.hair]);
 
   useEffect(() => {
     let cancelled = false;
-    async function run() {
-      try {
-        const s = await getSizeCached(selected.up);
-        if (!cancelled) setUpSize(s);
-      } catch (e) {
-        console.error("up load error:", e);
-        if (!cancelled) setUpSize(null);
-      }
-    }
-    run();
-    return () => {
-      cancelled = true;
-    };
+    getSizeCached(selected.up).then((s) => !cancelled && setUpSize(s)).catch(() => !cancelled && setUpSize(null));
+    return () => (cancelled = true);
   }, [selected.up]);
 
   useEffect(() => {
     let cancelled = false;
-    async function run() {
-      try {
-        const s = await getSizeCached(selected.down);
-        if (!cancelled) setDownSize(s);
-      } catch (e) {
-        console.error("down load error:", e);
-        if (!cancelled) setDownSize(null);
-      }
-    }
-    run();
-    return () => {
-      cancelled = true;
-    };
+    getSizeCached(selected.down).then((s) => !cancelled && setDownSize(s)).catch(() => !cancelled && setDownSize(null));
+    return () => (cancelled = true);
   }, [selected.down]);
 
   useEffect(() => {
     let cancelled = false;
-    async function run() {
-      try {
-        const s = await getSizeCached(selected.dress);
-        if (!cancelled) setDressSize(s);
-      } catch (e) {
-        console.error("dress load error:", e);
-        if (!cancelled) setDressSize(null);
-      }
-    }
-    run();
-    return () => {
-      cancelled = true;
-    };
+    getSizeCached(selected.dress).then((s) => !cancelled && setDressSize(s)).catch(() => !cancelled && setDressSize(null));
+    return () => (cancelled = true);
   }, [selected.dress]);
 
   useEffect(() => {
     let cancelled = false;
-    async function run() {
-      try {
-        const s = await getSizeCached(selected.shoes);
-        if (!cancelled) setShoesSize(s);
-      } catch (e) {
-        console.error("shoes load error:", e);
-        if (!cancelled) setShoesSize(null);
-      }
-    }
-    run();
-    return () => {
-      cancelled = true;
-    };
+    getSizeCached(selected.shoes).then((s) => !cancelled && setShoesSize(s)).catch(() => !cancelled && setShoesSize(null));
+    return () => (cancelled = true);
   }, [selected.shoes]);
 
   useEffect(() => {
     let cancelled = false;
     async function run() {
       const next = { hairclips: null, headphones: null, necklace: null, stockings: null, socks: null };
-
       try {
         next.hairclips = await getSizeCached(selected.hairclips);
         next.headphones = await getSizeCached(selected.headphones);
         next.necklace = await getSizeCached(selected.necklace);
         next.stockings = await getSizeCached(selected.stockings);
         next.socks = await getSizeCached(selected.socks);
-      } catch (e) {
-        console.error("accessory size error:", e);
-      }
-
+      } catch {}
       if (!cancelled) setAccSizes(next);
     }
     run();
-    return () => {
-      cancelled = true;
-    };
+    return () => (cancelled = true);
   }, [selected.hairclips, selected.headphones, selected.necklace, selected.stockings, selected.socks]);
 
   // ===========================
@@ -714,7 +574,6 @@ export default function GameActive() {
     return "short";
   }, [selected.shoes, shoesNameByUrl]);
 
-  // Shoes Z regime
   const shoesZ = useMemo(() => {
     if (selected.dress) return Z_SHOES_OVER_ALL;
     if (!selected.down) return Z_SHOES_OVER_ALL;
@@ -723,11 +582,10 @@ export default function GameActive() {
   }, [selected.dress, selected.down, downKind]);
 
   // ===========================
-  // Stage layout (BODY px -> UI px)
+  // Stage layout
   // ===========================
   const stageLayout = useMemo(() => {
     if (!bodyMeta) return null;
-
     const { bodyW, bodyH, head } = bodyMeta;
 
     const scale = Math.min(STAGE_W / bodyW, STAGE_H / bodyH);
@@ -743,7 +601,6 @@ export default function GameActive() {
 
       const hx = Math.round(headCx - hairSize.w / 2 + HAIR_X_NUDGE);
       const hy = Math.round(headTop - hairSize.h * 0.08 + HAIR_Y_NUDGE);
-
       hairPos = { x: hx, y: hy, s: 1 };
     }
 
@@ -751,7 +608,7 @@ export default function GameActive() {
   }, [bodyMeta, hairSize, STAGE_W, STAGE_H, HAIR_X_NUDGE, HAIR_Y_NUDGE]);
 
   // ===========================
-  // Render helpers (in BODY coords)
+  // Render helpers
   // ===========================
   function FullLayer({ src, z }) {
     if (!src || !stageLayout) return null;
@@ -821,7 +678,6 @@ export default function GameActive() {
 
   function AnchorToBBox({ src, size, bbox, widthFactor, xNudge, yNudge, yBase, z }) {
     if (!src || !size || !bbox) return null;
-
     const bw = Math.max(1, bbox.right - bbox.left);
     const cx = (bbox.left + bbox.right) / 2;
 
@@ -835,8 +691,7 @@ export default function GameActive() {
   }
 
   function UpLayer({ src, z, kind }) {
-    if (!src || !stageLayout || !bodyMeta?.torso || !upSize || !kind) return null;
-
+    if (!src || !bodyMeta?.torso || !upSize || !kind) return null;
     const torso = bodyMeta.torso;
     const isLong = kind === "long";
 
@@ -845,25 +700,13 @@ export default function GameActive() {
     const yNudge = isLong ? UP_LONG_Y_NUDGE : UP_SHORT_Y_NUDGE;
 
     const torsoH = Math.max(1, torso.bottom - torso.top);
-    const yBase = torso.top - torsoH * 0.10;
+    const yBase = torso.top - torsoH * 0.1;
 
-    return (
-      <AnchorToBBox
-        src={src}
-        size={upSize}
-        bbox={torso}
-        widthFactor={widthFactor}
-        xNudge={xNudge}
-        yNudge={yNudge}
-        yBase={yBase}
-        z={z}
-      />
-    );
+    return <AnchorToBBox src={src} size={upSize} bbox={torso} widthFactor={widthFactor} xNudge={xNudge} yNudge={yNudge} yBase={yBase} z={z} />;
   }
 
   function DownLayer({ src, z, kind }) {
-    if (!src || !stageLayout || !bodyMeta?.hips || !downSize || !kind) return null;
-
+    if (!src || !bodyMeta?.hips || !downSize || !kind) return null;
     const hips = bodyMeta.hips;
     const isJeans = kind === "jeans";
 
@@ -873,23 +716,11 @@ export default function GameActive() {
 
     const yBase = hips.top;
 
-    return (
-      <AnchorToBBox
-        src={src}
-        size={downSize}
-        bbox={hips}
-        widthFactor={widthFactor}
-        xNudge={xNudge}
-        yNudge={yNudge}
-        yBase={yBase}
-        z={z}
-      />
-    );
+    return <AnchorToBBox src={src} size={downSize} bbox={hips} widthFactor={widthFactor} xNudge={xNudge} yNudge={yNudge} yBase={yBase} z={z} />;
   }
 
   function DressLayer({ src, z, kind }) {
-    if (!src || !stageLayout || !bodyMeta?.torso || !dressSize || !kind) return null;
-
+    if (!src || !bodyMeta?.torso || !dressSize || !kind) return null;
     const torso = bodyMeta.torso;
     const isSleeves = kind === "sleeves";
 
@@ -900,23 +731,11 @@ export default function GameActive() {
     const torsoH = Math.max(1, torso.bottom - torso.top);
     const yBase = torso.top - torsoH * 0.12;
 
-    return (
-      <AnchorToBBox
-        src={src}
-        size={dressSize}
-        bbox={torso}
-        widthFactor={widthFactor}
-        xNudge={xNudge}
-        yNudge={yNudge}
-        yBase={yBase}
-        z={z}
-      />
-    );
+    return <AnchorToBBox src={src} size={dressSize} bbox={torso} widthFactor={widthFactor} xNudge={xNudge} yNudge={yNudge} yBase={yBase} z={z} />;
   }
 
   function ShoesLayer({ src, z, kind }) {
-    if (!src || !stageLayout || !bodyMeta?.lower || !shoesSize || !kind) return null;
-
+    if (!src || !bodyMeta?.lower || !shoesSize || !kind) return null;
     const lower = bodyMeta.lower;
     const isLong = kind === "long";
 
@@ -926,125 +745,54 @@ export default function GameActive() {
 
     const yBase = lower.top;
 
-    return (
-      <AnchorToBBox
-        src={src}
-        size={shoesSize}
-        bbox={lower}
-        widthFactor={widthFactor}
-        xNudge={xNudge}
-        yNudge={yNudge}
-        yBase={yBase}
-        z={z}
-      />
-    );
+    return <AnchorToBBox src={src} size={shoesSize} bbox={lower} widthFactor={widthFactor} xNudge={xNudge} yNudge={yNudge} yBase={yBase} z={z} />;
   }
 
   function HairclipsLayer() {
     if (!selected.hairclips || !bodyMeta?.head || !accSizes.hairclips) return null;
     const head = bodyMeta.head;
-
     const headH = Math.max(1, head.bottom - head.top);
-    const yBase = head.top - headH * 0.10;
+    const yBase = head.top - headH * 0.1;
 
-    return (
-      <AnchorToBBox
-        src={selected.hairclips}
-        size={accSizes.hairclips}
-        bbox={head}
-        widthFactor={HAIRCLIPS_WIDTH_FACTOR}
-        xNudge={HAIRCLIPS_X_NUDGE}
-        yNudge={HAIRCLIPS_Y_NUDGE}
-        yBase={yBase}
-        z={Z_HEAD_ACCESSORY}
-      />
-    );
+    return <AnchorToBBox src={selected.hairclips} size={accSizes.hairclips} bbox={head} widthFactor={HAIRCLIPS_WIDTH_FACTOR} xNudge={HAIRCLIPS_X_NUDGE} yNudge={HAIRCLIPS_Y_NUDGE} yBase={yBase} z={Z_HEAD_ACCESSORY} />;
   }
 
   function HeadphonesLayer() {
     if (!selected.headphones || !bodyMeta?.head || !accSizes.headphones) return null;
     const head = bodyMeta.head;
-
     const headH = Math.max(1, head.bottom - head.top);
     const yBase = head.top - headH * 0.08;
 
-    return (
-      <AnchorToBBox
-        src={selected.headphones}
-        size={accSizes.headphones}
-        bbox={head}
-        widthFactor={HEADPHONES_WIDTH_FACTOR}
-        xNudge={HEADPHONES_X_NUDGE}
-        yNudge={HEADPHONES_Y_NUDGE}
-        yBase={yBase}
-        z={Z_HEAD_ACCESSORY}
-      />
-    );
+    return <AnchorToBBox src={selected.headphones} size={accSizes.headphones} bbox={head} widthFactor={HEADPHONES_WIDTH_FACTOR} xNudge={HEADPHONES_X_NUDGE} yNudge={HEADPHONES_Y_NUDGE} yBase={yBase} z={Z_HEAD_ACCESSORY} />;
   }
 
   function NecklaceLayer() {
     if (!selected.necklace || !bodyMeta?.torso || !accSizes.necklace) return null;
     const torso = bodyMeta.torso;
-
     const torsoH = Math.max(1, torso.bottom - torso.top);
     const yBase = torso.top + torsoH * 0.08;
 
-    return (
-      <AnchorToBBox
-        src={selected.necklace}
-        size={accSizes.necklace}
-        bbox={torso}
-        widthFactor={NECKLACE_WIDTH_FACTOR}
-        xNudge={NECKLACE_X_NUDGE}
-        yNudge={NECKLACE_Y_NUDGE}
-        yBase={yBase}
-        z={Z_NECKLACE}
-      />
-    );
+    return <AnchorToBBox src={selected.necklace} size={accSizes.necklace} bbox={torso} widthFactor={NECKLACE_WIDTH_FACTOR} xNudge={NECKLACE_X_NUDGE} yNudge={NECKLACE_Y_NUDGE} yBase={yBase} z={Z_NECKLACE} />;
   }
 
   function StockingsLayer() {
     if (!selected.stockings || !bodyMeta?.lower || !accSizes.stockings) return null;
     const lower = bodyMeta.lower;
-
     const yBase = lower.top;
 
-    return (
-      <AnchorToBBox
-        src={selected.stockings}
-        size={accSizes.stockings}
-        bbox={lower}
-        widthFactor={STOCKINGS_WIDTH_FACTOR}
-        xNudge={STOCKINGS_X_NUDGE}
-        yNudge={STOCKINGS_Y_NUDGE}
-        yBase={yBase}
-        z={Z_STOCKINGS}
-      />
-    );
+    return <AnchorToBBox src={selected.stockings} size={accSizes.stockings} bbox={lower} widthFactor={STOCKINGS_WIDTH_FACTOR} xNudge={STOCKINGS_X_NUDGE} yNudge={STOCKINGS_Y_NUDGE} yBase={yBase} z={Z_STOCKINGS} />;
   }
 
   function SocksLayer() {
     if (!selected.socks || !bodyMeta?.lower || !accSizes.socks) return null;
     const lower = bodyMeta.lower;
-
     const yBase = lower.top;
 
-    return (
-      <AnchorToBBox
-        src={selected.socks}
-        size={accSizes.socks}
-        bbox={lower}
-        widthFactor={SOCKS_WIDTH_FACTOR}
-        xNudge={SOCKS_X_NUDGE}
-        yNudge={SOCKS_Y_NUDGE}
-        yBase={yBase}
-        z={Z_SOCKS}
-      />
-    );
+    return <AnchorToBBox src={selected.socks} size={accSizes.socks} bbox={lower} widthFactor={SOCKS_WIDTH_FACTOR} xNudge={SOCKS_X_NUDGE} yNudge={SOCKS_Y_NUDGE} yBase={yBase} z={Z_SOCKS} />;
   }
 
   // ===========================
-  // Wardrobe UI
+  // Wardrobe UI (unchanged)
   // ===========================
   function WardrobeGrid({ title, items, selectedUrl, onPick }) {
     return (
@@ -1096,12 +844,7 @@ export default function GameActive() {
                       overflow: "hidden",
                     }}
                   >
-                    <img
-                      src={it.url}
-                      alt={it.pretty}
-                      style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                      draggable={false}
-                    />
+                    <img src={it.url} alt={it.pretty} style={{ width: "100%", height: "100%", objectFit: "contain" }} draggable={false} />
                   </div>
                   <div
                     style={{
@@ -1118,12 +861,6 @@ export default function GameActive() {
               );
             })}
           </div>
-
-          {items.length === 0 ? (
-            <div style={{ marginTop: 10, fontSize: 12, color: "rgba(36,12,58,0.65)" }}>
-              No items found for this category (check folder names / filenames).
-            </div>
-          ) : null}
         </div>
       </div>
     );
@@ -1146,48 +883,19 @@ export default function GameActive() {
     return (
       <div style={{ width: "100%", height: "100%", overflowY: "auto", paddingRight: 6, display: "grid", gap: 12 }}>
         <div style={{ minHeight: 240 }}>
-          <WardrobeGrid
-            title="Hairclips"
-            items={assets.accessories.hairclips}
-            selectedUrl={selected.hairclips}
-            onPick={(url) => pickAccessory("hairclips", url)}
-          />
+          <WardrobeGrid title="Hairclips" items={assets.accessories.hairclips} selectedUrl={selected.hairclips} onPick={(url) => pickAccessory("hairclips", url)} />
         </div>
-
         <div style={{ minHeight: 240 }}>
-          <WardrobeGrid
-            title="Headphones"
-            items={assets.accessories.headphones}
-            selectedUrl={selected.headphones}
-            onPick={(url) => pickAccessory("headphones", url)}
-          />
+          <WardrobeGrid title="Headphones" items={assets.accessories.headphones} selectedUrl={selected.headphones} onPick={(url) => pickAccessory("headphones", url)} />
         </div>
-
         <div style={{ minHeight: 240 }}>
-          <WardrobeGrid
-            title="Necklace"
-            items={assets.accessories.necklace}
-            selectedUrl={selected.necklace}
-            onPick={(url) => pickAccessory("necklace", url)}
-          />
+          <WardrobeGrid title="Necklace" items={assets.accessories.necklace} selectedUrl={selected.necklace} onPick={(url) => pickAccessory("necklace", url)} />
         </div>
-
         <div style={{ minHeight: 240 }}>
-          <WardrobeGrid
-            title="Stockings"
-            items={assets.accessories.stockings}
-            selectedUrl={selected.stockings}
-            onPick={(url) => pickAccessory("stockings", url)}
-          />
+          <WardrobeGrid title="Stockings" items={assets.accessories.stockings} selectedUrl={selected.stockings} onPick={(url) => pickAccessory("stockings", url)} />
         </div>
-
         <div style={{ minHeight: 240 }}>
-          <WardrobeGrid
-            title="Socks"
-            items={assets.accessories.socks}
-            selectedUrl={selected.socks}
-            onPick={(url) => pickAccessory("socks", url)}
-          />
+          <WardrobeGrid title="Socks" items={assets.accessories.socks} selectedUrl={selected.socks} onPick={(url) => pickAccessory("socks", url)} />
         </div>
       </div>
     );
@@ -1195,19 +903,10 @@ export default function GameActive() {
 
   const wardrobeContent = useMemo(() => {
     if (panel === "appearance") return <WardrobeAppearance />;
-
-    if (panel === "shoes")
-      return <WardrobeGrid title="Shoes" items={assets.shoes} selectedUrl={selected.shoes} onPick={pickShoes} />;
-
-    if (panel === "up")
-      return <WardrobeGrid title="Up" items={assets.up} selectedUrl={selected.up} onPick={pickUp} />;
-
-    if (panel === "down")
-      return <WardrobeGrid title="Down" items={assets.down} selectedUrl={selected.down} onPick={pickDown} />;
-
-    if (panel === "dress")
-      return <WardrobeGrid title="Dress" items={assets.dress} selectedUrl={selected.dress} onPick={pickDress} />;
-
+    if (panel === "shoes") return <WardrobeGrid title="Shoes" items={assets.shoes} selectedUrl={selected.shoes} onPick={pickShoes} />;
+    if (panel === "up") return <WardrobeGrid title="Up" items={assets.up} selectedUrl={selected.up} onPick={pickUp} />;
+    if (panel === "down") return <WardrobeGrid title="Down" items={assets.down} selectedUrl={selected.down} onPick={pickDown} />;
+    if (panel === "dress") return <WardrobeGrid title="Dress" items={assets.dress} selectedUrl={selected.dress} onPick={pickDress} />;
     return <WardrobeAccessories />;
   }, [panel, assets, selected, timeIsUp]);
 
@@ -1222,19 +921,25 @@ export default function GameActive() {
           <span className="brand-name">DressChain</span>
         </div>
 
-        <div className="wallet-pill">
-          {account ? (
-            <>
-              <span className="wallet-label">Кошелек</span>
-              <span className="wallet-address">{shortenAddress(account)}</span>
-              <span className="lobby-dot ok" />
-            </>
-          ) : (
-            <>
-              <span className="wallet-disconnected">Не подключен</span>
-              <span className="lobby-dot" />
-            </>
-          )}
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <button className="btn outline small" onClick={() => navigate(`/lobby/${roomId}`)}>
+            ← Back to Lobby
+          </button>
+
+          <div className="wallet-pill">
+            {account ? (
+              <>
+                <span className="wallet-label">Кошелек</span>
+                <span className="wallet-address">{shortenAddress(account)}</span>
+                <span className="lobby-dot ok" />
+              </>
+            ) : (
+              <>
+                <span className="wallet-disconnected">Не подключен</span>
+                <span className="lobby-dot" />
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -1246,6 +951,9 @@ export default function GameActive() {
               <div className="active-topicBubble">
                 <div className="active-bubbleTitle">I need to dress in style</div>
                 <div className="active-bubbleText">[{topic}]</div>
+                <div className="active-bubbleText" style={{ opacity: 0.7 }}>
+                  Room: {roomId}
+                </div>
               </div>
 
               <div className="active-avatarWrap">
@@ -1272,13 +980,10 @@ export default function GameActive() {
                         transformOrigin: "top left",
                       }}
                     >
-                      {/* Base body */}
                       <FullLayer src={selected.body} z={Z_BODY} />
 
-                      {/* Clothes: DRESS or DOWN+UP */}
                       {selected.dress ? (
                         <>
-                          {/* legs accessories must still render with dress */}
                           <StockingsLayer />
                           <SocksLayer />
                           <DressLayer src={selected.dress} kind={dressKind} z={Z_DRESS} />
@@ -1293,12 +998,9 @@ export default function GameActive() {
                       )}
 
                       <NecklaceLayer />
-
                       <HairLayer src={selected.hair} z={Z_HAIR} />
                       <HairclipsLayer />
                       <HeadphonesLayer />
-
-                      {/* Shoes: dynamic Z (under jeans / over all otherwise) */}
                       <ShoesLayer src={selected.shoes} kind={shoesKind} z={shoesZ} />
                     </div>
                   ) : null}
@@ -1331,109 +1033,42 @@ export default function GameActive() {
               </button>
 
               <div className="active-items">
-              {/* 1. appearance(body+hair) */}
-              <button
-                className={`active-item ${panel === "appearance" ? "selected" : ""}`}
-                onClick={() => setPanel("appearance")}
-                title="Appearance (skin + hair)"
-                disabled={timeIsUp}
-              >
-                <div className="active-itemIcon">
-                  <img
-                    src={iconAppearance}
-                    alt="appearance"
-                    draggable={false}
-                    style={{ width: 26, height: 26, objectFit: "contain" }}
-                  />
-                </div>
-              </button>
+                <button className={`active-item ${panel === "appearance" ? "selected" : ""}`} onClick={() => setPanel("appearance")} disabled={timeIsUp}>
+                  <div className="active-itemIcon">
+                    <img src={iconAppearance} alt="appearance" draggable={false} style={{ width: 26, height: 26, objectFit: "contain" }} />
+                  </div>
+                </button>
 
-              {/* 2. top */}
-              <button
-                className={`active-item ${panel === "up" ? "selected" : ""}`}
-                onClick={() => setPanel("up")}
-                title="Up"
-                disabled={timeIsUp}
-              >
-                <div className="active-itemIcon">
-                  <img
-                    src={iconUp}
-                    alt="up"
-                    draggable={false}
-                    style={{ width: 26, height: 26, objectFit: "contain" }}
-                  />
-                </div>
-              </button>
+                <button className={`active-item ${panel === "up" ? "selected" : ""}`} onClick={() => setPanel("up")} disabled={timeIsUp}>
+                  <div className="active-itemIcon">
+                    <img src={iconUp} alt="up" draggable={false} style={{ width: 26, height: 26, objectFit: "contain" }} />
+                  </div>
+                </button>
 
-              {/* 3. bottom */}
-              <button
-                className={`active-item ${panel === "down" ? "selected" : ""}`}
-                onClick={() => setPanel("down")}
-                title="Down"
-                disabled={timeIsUp}
-              >
-                <div className="active-itemIcon">
-                  <img
-                    src={iconBottom}
-                    alt="bottom"
-                    draggable={false}
-                    style={{ width: 26, height: 26, objectFit: "contain" }}
-                  />
-                </div>
-              </button>
+                <button className={`active-item ${panel === "down" ? "selected" : ""}`} onClick={() => setPanel("down")} disabled={timeIsUp}>
+                  <div className="active-itemIcon">
+                    <img src={iconBottom} alt="bottom" draggable={false} style={{ width: 26, height: 26, objectFit: "contain" }} />
+                  </div>
+                </button>
 
-              {/* 4. dress */}
-              <button
-                className={`active-item ${panel === "dress" ? "selected" : ""}`}
-                onClick={() => setPanel("dress")}
-                title="Dress"
-                disabled={timeIsUp}
-              >
-                <div className="active-itemIcon">
-                  <img
-                    src={iconDress}
-                    alt="dress"
-                    draggable={false}
-                    style={{ width: 26, height: 26, objectFit: "contain" }}
-                  />
-                </div>
-              </button>
+                <button className={`active-item ${panel === "dress" ? "selected" : ""}`} onClick={() => setPanel("dress")} disabled={timeIsUp}>
+                  <div className="active-itemIcon">
+                    <img src={iconDress} alt="dress" draggable={false} style={{ width: 26, height: 26, objectFit: "contain" }} />
+                  </div>
+                </button>
 
-              {/* 5. shoes */}
-              <button
-                className={`active-item ${panel === "shoes" ? "selected" : ""}`}
-                onClick={() => setPanel("shoes")}
-                title="Shoes"
-                disabled={timeIsUp}
-              >
-                <div className="active-itemIcon">
-                  <img
-                    src={iconShoes}
-                    alt="shoes"
-                    draggable={false}
-                    style={{ width: 26, height: 26, objectFit: "contain" }}
-                  />
-                </div>
-              </button>
+                <button className={`active-item ${panel === "shoes" ? "selected" : ""}`} onClick={() => setPanel("shoes")} disabled={timeIsUp}>
+                  <div className="active-itemIcon">
+                    <img src={iconShoes} alt="shoes" draggable={false} style={{ width: 26, height: 26, objectFit: "contain" }} />
+                  </div>
+                </button>
 
-              {/* 6. accessories */}
-              <button
-                className={`active-item ${panel === "accessories" ? "selected" : ""}`}
-                onClick={() => setPanel("accessories")}
-                title="Accessories"
-                disabled={timeIsUp}
-              >
-                <div className="active-itemIcon">
-                  <img
-                    src={iconAccessories}
-                    alt="accessories"
-                    draggable={false}
-                    style={{ width: 26, height: 26, objectFit: "contain" }}
-                  />
-                </div>
-              </button>
-            </div>
-
+                <button className={`active-item ${panel === "accessories" ? "selected" : ""}`} onClick={() => setPanel("accessories")} disabled={timeIsUp}>
+                  <div className="active-itemIcon">
+                    <img src={iconAccessories} alt="accessories" draggable={false} style={{ width: 26, height: 26, objectFit: "contain" }} />
+                  </div>
+                </button>
+              </div>
             </div>
           </div>
 
