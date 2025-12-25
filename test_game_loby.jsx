@@ -1,7 +1,7 @@
 // src/pages/Game_Lobby.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import "../main_page.css";
-import girlAvatar from "../assets/characters/Body_1.png";
+import girlAvatar from "../assets/girl.png";
 
 function shortenAddress(address) {
   if (!address) return "";
@@ -21,6 +21,8 @@ function getRandomTopic() {
   return GAME_TOPICS[Math.floor(Math.random() * GAME_TOPICS.length)];
 }
 
+const CHAT_TTL_MS = 2 * 60 * 1000; // 2 минуты
+
 export default function GameLobby() {
   const [account, setAccount] = useState(null);
 
@@ -31,15 +33,18 @@ export default function GameLobby() {
   // Тема — рандом (позже фиксировать на createGame)
   const [topic] = useState(getRandomTopic());
 
-  // Дефолт: хост уже в лобби (как после CREATE GAME)
+  // В players добавили поля chatText/chatUntil (таймштамп, когда сообщение исчезает)
   const [players, setPlayers] = useState([
-    { address: "HOST", role: "HOST" },
-    { address: null, role: "EMPTY" },
-    { address: null, role: "EMPTY" },
-    { address: null, role: "EMPTY" },
+    { address: "HOST", role: "HOST", chatText: "", chatUntil: 0 },
+    { address: null, role: "EMPTY", chatText: "", chatUntil: 0 },
+    { address: null, role: "EMPTY", chatText: "", chatUntil: 0 },
+    { address: null, role: "EMPTY", chatText: "", chatUntil: 0 },
   ]);
 
   const [status, setStatus] = useState("");
+
+  // чат-инпут
+  const [chatInput, setChatInput] = useState("");
 
   const filledCount = useMemo(
     () => players.filter((p) => !!p.address).length,
@@ -55,6 +60,41 @@ export default function GameLobby() {
     if (h === "HOST") return true; // заглушка до реального адреса
     return account.toLowerCase() === h.toLowerCase();
   }, [account, players]);
+
+  // индекс текущего игрока в массиве (если он в лобби)
+  const myIndex = useMemo(() => {
+    if (!account) return -1;
+    const idx = players.findIndex(
+      (p) => p.address && p.address !== "HOST" && p.address.toLowerCase?.() === account.toLowerCase()
+    );
+    // если хост уже заменён на реальный адрес — он тоже может быть account
+    if (idx !== -1) return idx;
+
+    const hostIdx = players.findIndex(
+      (p) => p.address && p.address !== "HOST" && p.address.toLowerCase?.() === account.toLowerCase()
+    );
+    return hostIdx;
+  }, [account, players]);
+
+  // Авто-очистка сообщений (каждую секунду убираем истёкшие)
+  useEffect(() => {
+    const id = setInterval(() => {
+      const now = Date.now();
+      setPlayers((prev) => {
+        let changed = false;
+        const next = prev.map((p) => {
+          if (!p.address) return p;
+          if (p.chatUntil && p.chatUntil <= now && p.chatText) {
+            changed = true;
+            return { ...p, chatText: "", chatUntil: 0 };
+          }
+          return p;
+        });
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   async function connectWallet() {
     if (!window.ethereum) {
@@ -74,7 +114,7 @@ export default function GameLobby() {
 
         // Если хост был заглушкой — заменяем на реальный адрес
         if (next[0]?.address === "HOST") {
-          next[0] = { address: acc, role: "HOST" };
+          next[0] = { ...next[0], address: acc, role: "HOST" };
           return next;
         }
 
@@ -86,7 +126,7 @@ export default function GameLobby() {
 
         // Иначе — занимает первый свободный слот
         const idx = next.findIndex((p) => !p.address);
-        if (idx !== -1) next[idx] = { address: acc, role: "PLAYER" };
+        if (idx !== -1) next[idx] = { ...next[idx], address: acc, role: "PLAYER" };
         else setStatus("Комната заполнена.");
         return next;
       });
@@ -111,12 +151,38 @@ export default function GameLobby() {
     setStatus("ID комнаты скопирован.");
   }
 
+  // ===== чат: отправка сообщения =====
+  function sendChat() {
+    if (!account) return setStatus("Сначала подключи кошелек.");
+    if (myIndex === -1) return setStatus("Сначала займи слот в лобби (подключи кошелек).");
+
+    const text = chatInput.trim();
+    if (!text) return;
+
+    const until = Date.now() + CHAT_TTL_MS;
+
+    setPlayers((prev) => {
+      const next = [...prev];
+      const p = next[myIndex];
+      next[myIndex] = { ...p, chatText: text, chatUntil: until };
+      return next;
+    });
+
+    setChatInput("");
+  }
+
+  function onChatKeyDown(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      sendChat();
+    }
+  }
+
   return (
     <div className="start-root">
       <div className="glow-circle glow-1" />
       <div className="glow-circle glow-2" />
 
-      {/* Один хедер (без дублей логотипа/кошелька) */}
       <header className="start-header">
         <div className="brand">
           <span className="brand-mark">★</span>
@@ -139,11 +205,26 @@ export default function GameLobby() {
         </div>
       </header>
 
-      {/* Только левый блок на всю ширину (правый круг убран) */}
       <main className="lobby-main">
         <div className="lobby-body">
           <section className="lobby-left">
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              {/* чат-инпут слева */}
+              <div className="lobby-chatbar">
+                <input
+                  className="lobby-chat-input"
+                  placeholder={account ? "Напиши сообщение (будет видно 2 минуты)..." : "Подключи кошелек, чтобы писать..."}
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={onChatKeyDown}
+                  disabled={!account}
+                />
+                <button className="btn small lobby-chat-send" onClick={sendChat} disabled={!account}>
+                  Send
+                </button>
+              </div>
+
+              {/* connect справа */}
               <button className="btn outline small" onClick={connectWallet}>
                 {account ? "Кошелек подключен" : "Подключить кошелек"}
               </button>
@@ -194,8 +275,17 @@ export default function GameLobby() {
                     ? shortenAddress(p.address)
                     : "Waiting...";
 
+                const showChat = filled && p.chatText && p.chatUntil > Date.now();
+
                 return (
                   <div key={idx} className={`avatar-card ${filled ? "filled" : ""}`}>
+                    {/* Бабл сообщения: показываем ТОЛЬКО если есть текст и не истёк TTL */}
+                    {showChat && (
+                      <div className="chat-bubble" title="Message disappears in 2 minutes">
+                        {p.chatText}
+                      </div>
+                    )}
+
                     {filled ? (
                       <img src={girlAvatar} alt="player" className="avatar-img" />
                     ) : (
@@ -226,7 +316,7 @@ export default function GameLobby() {
 
               {!account && (
                 <div className="lobby-note">
-                  Сначала подключи кошелек, чтобы занять слот.
+                  Сначала подключи кошелек, чтобы занять слот и писать в чат.
                 </div>
               )}
               {account && !isHost && (
