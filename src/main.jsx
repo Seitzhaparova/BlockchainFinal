@@ -7,6 +7,6 @@ import "./main_page.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <StartPage />
+    <GameActive />
   </React.StrictMode>
 );
