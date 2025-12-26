@@ -268,12 +268,32 @@ body {
 }
 
 /* Статус */
+/* ===== Status / response messages ===== */
 
+/* Default = for LIGHT panels (Lobby / Active / Result) */
 .status-bar {
   margin-top: 10px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+
+  border-top: 1px solid rgba(0, 0, 0, 0.08);  /* darker divider for light bg */
   font-size: 12px;
+
+  color: rgba(36, 12, 58, 0.72);              /* ✅ readable on light bg */
+}
+
+/* Override = for DARK panels (Start page card) */
+.start-card .status-bar {
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  color: var(--text-muted);                    /* ✅ readable on dark bg */
+}
+
+/* Optional helper class if you want messages not tied to status-bar */
+.response-text {
+  font-size: 12px;
+  color: rgba(36, 12, 58, 0.72);
+}
+
+.start-card .response-text {
   color: var(--text-muted);
 }
 
