@@ -1,17 +1,18 @@
 // src/pages/Game_Lobby.jsx
 import React, { useMemo, useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import "../main_page.css";
-import girl1 from "../assets/characters/girl1.png";
-import girl2 from "../assets/characters/girl2.png";
-import girl3 from "../assets/characters/girl3.png";
-import girl4 from "../assets/characters/girl4.png";
+
+import girl1 from "../assets/icons_girls/girl1.png";
+import girl2 from "../assets/icons_girls/girl2.png";
+import girl3 from "../assets/icons_girls/girl3.png";
+import girl4 from "../assets/icons_girls/girl4.png";
 
 function shortenAddress(address) {
   if (!address) return "";
   return address.slice(0, 6) + "..." + address.slice(-4);
 }
 
-// Темы (пока локально, позже можно получать из контракта)
 const GAME_TOPICS = [
   "NEON GLAM",
   "CYBER FAIRY",
@@ -24,127 +25,191 @@ function getRandomTopic() {
   return GAME_TOPICS[Math.floor(Math.random() * GAME_TOPICS.length)];
 }
 
-// Моковый курс: 1 ETH -> 100 TOKENS
 const TOKENS_PER_ETH = 100;
+const CHAT_TTL_MS = 5 * 1000;
+const DEV_ALLOW_SOLO_START = true;
 
-// Тайм-аут для сообщений чата (2 минуты)
-const CHAT_TTL_MS = 2 * 60 * 1000;
-
-// Моковая функция получения баланса
-async function fetchTokenBalance(address) {
-  // TODO: В реальном проекте здесь будет вызов контракта
-  // Заглушка: возвращаем случайное число для демонстрации
+// mock balance
+async function fetchTokenBalance(_address) {
   return Math.floor(Math.random() * 1000);
 }
 
-// Массив с аватарами для каждого слота
 const AVATARS = [girl1, girl2, girl3, girl4];
 
+function getEthereum() {
+  const eth = window.ethereum;
+  if (!eth) return null;
+  if (Array.isArray(eth.providers)) {
+    return eth.providers.find((p) => p.isMetaMask) || eth.providers[0];
+  }
+  return eth;
+}
+
+function buildPlayers(hostAddr, maxPlayers) {
+  const mp = Math.max(2, Number(maxPlayers) || 4);
+  const arr = [
+    { address: hostAddr || "HOST", role: "HOST", chatText: "", chatUntil: 0 },
+  ];
+  while (arr.length < mp) {
+    arr.push({ address: null, role: "EMPTY", chatText: "", chatUntil: 0 });
+  }
+  return arr.slice(0, mp);
+}
+
 export default function GameLobby() {
+  const navigate = useNavigate();
+  const { roomId } = useParams();
+
   const [account, setAccount] = useState(null);
   const [tokenBalance, setTokenBalance] = useState(0);
-  const [ethInput, setEthInput] = useState(""); // Для покупки токенов
-  const [chatInput, setChatInput] = useState(""); // Для чата
+  const [ethInput, setEthInput] = useState("");
+  const [chatInput, setChatInput] = useState("");
 
-  // Мок-данные комнаты
-  const [roomId] = useState("482913");
-  const [maxPlayers] = useState(4);
-
-  // Тема — рандом
-  const [topic] = useState(getRandomTopic());
-
-  // Дефолт: хост уже в лобби
-  const [players, setPlayers] = useState([
-    { address: "HOST", role: "HOST", chatText: "", chatUntil: 0 },
-    { address: null, role: "EMPTY", chatText: "", chatUntil: 0 },
-    { address: null, role: "EMPTY", chatText: "", chatUntil: 0 },
-    { address: null, role: "EMPTY", chatText: "", chatUntil: 0 },
-  ]);
+  const [maxPlayers, setMaxPlayers] = useState(4);
+  const [topic, setTopic] = useState("—");
+  const [players, setPlayers] = useState(() => buildPlayers("HOST", 4));
 
   const [status, setStatus] = useState("");
 
-  // Функция для тестирования чата без кошелька
-  const testChatWithoutWallet = () => {
-    const demoAddress = "0x1234567890abcdef1234567890abcdef12345678";
-    setAccount(demoAddress);
-
-    // Автоматически заполняем всех игроков с сообщениями
-    setPlayers([
-      {
-        address: demoAddress,
-        role: "HOST",
-        chatText: "Привет всем! Я демо-хост 👑",
-        chatUntil: Date.now() + CHAT_TTL_MS,
-      },
-      {
-        address: "0xabcdef1234567890abcdef1234567890abcdef12",
-        role: "PLAYER",
-        chatText: "Готов играть! 😎",
-        chatUntil: Date.now() + CHAT_TTL_MS,
-      },
-      {
-        address: "0x7890abcdef1234567890abcdef1234567890abcd",
-        role: "PLAYER",
-        chatText: "Жду старта игры ⏳",
-        chatUntil: Date.now() + CHAT_TTL_MS,
-      },
-      {
-        address: "0x34567890abcdef1234567890abcdef12345678ab",
-        role: "PLAYER",
-        chatText: "Давайте уже начинать! 🚀",
-        chatUntil: Date.now() + CHAT_TTL_MS,
-      },
-    ]);
-
-    setTokenBalance(500);
-    setStatus("Демо-режим активирован! Чат работает без MetaMask. Вы - HOST.");
-  };
-
-  const filledCount = useMemo(
-    () => players.filter((p) => !!p.address).length,
-    [players]
-  );
-
-  const hostAddress = useMemo(() => players?.[0]?.address || "—", [players]);
-
-  const isHost = useMemo(() => {
-    if (!account) return false;
-    const h = players?.[0]?.address;
-    if (!h) return false;
-    if (h === "HOST") return true; // заглушка до реального адреса
-    return account.toLowerCase() === h.toLowerCase();
-  }, [account, players]);
-
-  // Индекс текущего игрока в массиве (если он в лобби)
-  const myIndex = useMemo(() => {
-    if (!account) return -1;
-
-    // Проверяем обычных игроков
-    const idx = players.findIndex(
-      (p) =>
-        p.address &&
-        p.address !== "HOST" &&
-        p.address.toLowerCase() === account.toLowerCase()
-    );
-    if (idx !== -1) return idx;
-
-    // Проверяем хост
-    const hostIdx = players.findIndex(
-      (p) => p.address && p.address.toLowerCase() === account.toLowerCase()
-    );
-    return hostIdx;
-  }, [account, players]);
-
-  // Загрузка баланса при изменении аккаунта
+  // 1) Load room meta by URL roomId
   useEffect(() => {
-    if (account) {
-      loadTokenBalance();
-    } else {
-      setTokenBalance(0);
-    }
-  }, [account]);
+    if (!roomId) return;
 
-  // Авто-очистка сообщений чата (каждую секунду убираем истёкшие)
+    const raw = localStorage.getItem(`dc_room_${roomId}`);
+    if (raw) {
+      try {
+        const meta = JSON.parse(raw);
+        const t = meta?.topic || getRandomTopic();
+        const host = meta?.host || "HOST";
+        const mp = Number(meta?.maxPlayers) || 4;
+
+        setTopic(t);
+        setMaxPlayers(mp);
+        setPlayers(buildPlayers(host, mp));
+      } catch {
+        setTopic(getRandomTopic());
+        setMaxPlayers(4);
+        setPlayers(buildPlayers("HOST", 4));
+      }
+    } else {
+      // joining a room that isn't stored in this browser
+      setTopic(getRandomTopic());
+      setMaxPlayers(4);
+      setPlayers(buildPlayers("HOST", 4));
+    }
+  }, [roomId]);
+
+  // 2) Wallet auto-detect (no popup). If not connected -> go back to start
+  useEffect(() => {
+    const eth = getEthereum();
+    if (!eth) {
+      setStatus("MetaMask не найден. Установи MetaMask.");
+      navigate("/", { replace: true });
+      return;
+    }
+
+    let mounted = true;
+
+    async function init() {
+      try {
+        const accounts = await eth.request({ method: "eth_accounts" });
+        const acc = accounts?.[0] ?? null;
+
+        if (!mounted) return;
+
+        if (!acc) {
+          setStatus("Кошелёк не подключён. Подключи на стартовой странице.");
+          navigate("/", { replace: true });
+          return;
+        }
+
+        setAccount(acc);
+      } catch (e) {
+        console.error("wallet init error:", e);
+        setStatus("Ошибка MetaMask. Вернись на стартовую страницу.");
+        navigate("/", { replace: true });
+      }
+    }
+
+    init();
+
+    const onAccountsChanged = (accs) => {
+      const acc = accs?.[0] ?? null;
+      setAccount(acc);
+      if (!acc) navigate("/", { replace: true });
+    };
+
+    const onChainChanged = () => window.location.reload();
+
+    eth.on?.("accountsChanged", onAccountsChanged);
+    eth.on?.("chainChanged", onChainChanged);
+
+    return () => {
+      mounted = false;
+      eth.removeListener?.("accountsChanged", onAccountsChanged);
+      eth.removeListener?.("chainChanged", onChainChanged);
+    };
+  }, [navigate]);
+
+  // 3) When account appears -> auto occupy slot and load balance
+  useEffect(() => {
+    if (!account) return;
+
+    (async () => {
+      try {
+        const b = await fetchTokenBalance(account);
+        setTokenBalance(b);
+      } catch {
+        setTokenBalance(0);
+      }
+    })();
+
+    setPlayers((prev) => {
+      const next = [...prev];
+
+      // already inside?
+      const exists = next.some(
+        (p) => p.address && p.address.toLowerCase?.() === account.toLowerCase()
+      );
+      if (exists) return prev;
+
+      // if host placeholder -> make this wallet host and persist
+      if (next[0]?.address === "HOST") {
+        next[0] = { ...next[0], address: account, role: "HOST" };
+
+        try {
+          const key = `dc_room_${roomId}`;
+          const raw = localStorage.getItem(key);
+          const meta = raw ? JSON.parse(raw) : {};
+          localStorage.setItem(
+            key,
+            JSON.stringify({
+              ...meta,
+              roomId,
+              host: account,
+              topic: meta.topic || topic || getRandomTopic(),
+              maxPlayers: meta.maxPlayers || maxPlayers || 4,
+              createdAt: meta.createdAt || Date.now(),
+            })
+          );
+        } catch {}
+
+        return next;
+      }
+
+      // else: take first empty slot
+      const idx = next.findIndex((p) => !p.address);
+      if (idx !== -1) {
+        next[idx] = { ...next[idx], address: account, role: "PLAYER" };
+        return next;
+      }
+
+      setStatus("Комната заполнена.");
+      return prev;
+    });
+  }, [account, roomId, topic, maxPlayers]);
+
+  // chat TTL cleanup
   useEffect(() => {
     const id = setInterval(() => {
       const now = Date.now();
@@ -161,47 +226,49 @@ export default function GameLobby() {
         return changed ? next : prev;
       });
     }, 1000);
+
     return () => clearInterval(id);
   }, []);
 
-  async function loadTokenBalance() {
-    try {
-      // В реальном проекте здесь будет запрос к контракту
-      const balance = await fetchTokenBalance(account);
-      setTokenBalance(balance);
-    } catch (error) {
-      console.error("Ошибка при получении баланса:", error);
-      setTokenBalance(0);
-    }
-  }
+  const filledCount = useMemo(
+    () => players.filter((p) => !!p.address).length,
+    [players]
+  );
 
-  // Покупка токенов
+  const hostAddress = useMemo(() => players?.[0]?.address || "—", [players]);
+
+  const isHost = useMemo(() => {
+    if (!account) return false;
+    const h = players?.[0]?.address;
+    if (!h) return false;
+    if (h === "HOST") return true;
+    return account.toLowerCase() === h.toLowerCase();
+  }, [account, players]);
+
+  const myIndex = useMemo(() => {
+    if (!account) return -1;
+    return players.findIndex(
+      (p) => p.address && p.address.toLowerCase?.() === account.toLowerCase()
+    );
+  }, [account, players]);
+
   async function handleBuyTokens() {
-    if (!account) {
-      setStatus("Сначала подключи кошелек.");
-      return;
-    }
+    if (!account) return;
 
     const eth = Number(String(ethInput).replace(",", "."));
-
     if (!Number.isFinite(eth) || eth <= 0) {
       setStatus("Введи количество ETH больше 0.");
       return;
     }
 
-    // TODO: Реальная логика позже
-    // await contract.buyTokens({ value: parseEther(ethInput) });
-
-    // Мок: начислим токены
     const bought = eth * TOKENS_PER_ETH;
     setTokenBalance((prev) => prev + bought);
     setStatus(`Успешно куплено токенов: +${Math.floor(bought)} (мок)`);
     setEthInput("");
   }
 
-  // Отправка сообщения в чат
   function sendChat() {
-    if (!account) return setStatus("Сначала подключи кошелек.");
+    if (!account) return;
     if (myIndex === -1) return setStatus("Сначала займи слот в лобби.");
 
     const text = chatInput.trim();
@@ -219,7 +286,6 @@ export default function GameLobby() {
     setChatInput("");
   }
 
-  // Обработка нажатия Enter в чате
   function onChatKeyDown(e) {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -227,72 +293,38 @@ export default function GameLobby() {
     }
   }
 
-  async function connectWallet() {
-    if (!window.ethereum) {
-      setStatus("Установи MetaMask, чтобы подключить кошелек.");
-      return;
-    }
-    try {
-      const accounts = await window.ethereum.request({
-        method: "eth_request_accounts",
-      });
-      const acc = accounts[0];
-      setAccount(acc);
-      setStatus("Кошелек подключен.");
-
-      setPlayers((prev) => {
-        const next = [...prev];
-
-        // Если хост был заглушкой — заменяем на реальный адрес
-        if (next[0]?.address === "HOST") {
-          next[0] = { ...next[0], address: acc, role: "HOST" };
-          return next;
-        }
-
-        // Если уже есть в лобби — ничего не делаем
-        const exists = next.some(
-          (p) => p.address && p.address.toLowerCase() === acc.toLowerCase()
-        );
-        if (exists) return next;
-
-        // Иначе — занимает первый свободный слот
-        const idx = next.findIndex((p) => !p.address);
-        if (idx !== -1)
-          next[idx] = { ...next[idx], address: acc, role: "PLAYER" };
-        else setStatus("Комната заполнена.");
-        return next;
-      });
-    } catch (err) {
-      console.error(err);
-      setStatus("Подключение отменено.");
-    }
-  }
-
   function handleStartGame() {
-    if (!account) return setStatus("Сначала подключи кошелек.");
+    if (!roomId) return setStatus("Room ID отсутствует.");
+    if (!account) return; // should not happen because redirect
     if (!isHost) return setStatus("Стартовать игру может только host.");
-    if (filledCount < 2)
+  
+    // ✅ Only block if dev mode is OFF
+    if (!DEV_ALLOW_SOLO_START && filledCount < 2) {
       return setStatus("Нужно минимум 2 игрока, чтобы начать.");
-
-    // TODO: startGame(roomId) + переход на Game_Active.jsx
-    setStatus("Игра стартует... (позже будет переход на Game_Active.jsx)");
-    console.log("START GAME room:", roomId);
+    }
+  
+    // ✅ Link Lobby -> Active
+    navigate(`/active/${roomId}`);
   }
+  
 
   function handleCopyRoomId() {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(roomId);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(roomId || "");
       setStatus("ID комнаты скопирован.");
     } else {
       setStatus("Не удалось скопировать ID.");
     }
   }
 
-  // Функция для обновления баланса
-  function handleRefreshBalance() {
-    if (account) {
-      loadTokenBalance();
+  async function handleRefreshBalance() {
+    if (!account) return;
+    try {
+      const b = await fetchTokenBalance(account);
+      setTokenBalance(b);
       setStatus("Баланс обновлен");
+    } catch {
+      setStatus("Не удалось обновить баланс");
     }
   }
 
@@ -307,7 +339,6 @@ export default function GameLobby() {
           <span className="brand-name">DressChain</span>
         </div>
 
-        {/* Блок баланса токенов и кошелька */}
         <div className="wallet-pill">
           <div className="wallet-balance">
             <span className="wallet-label">Balance</span>
@@ -334,6 +365,7 @@ export default function GameLobby() {
       <main className="lobby-main">
         <div className="lobby-body">
           <section className="lobby-left">
+            {/* top row: back + chat + balance tools (no connect/test buttons) */}
             <div
               style={{
                 display: "flex",
@@ -344,101 +376,21 @@ export default function GameLobby() {
                 gap: "12px",
               }}
             >
-              {/* Чат-инпут слева */}
+              <button className="btn outline small" onClick={() => navigate("/")}>
+                ← Back
+              </button>
+
               <div className="lobby-chatbar">
                 <input
                   className="lobby-chat-input"
-                  placeholder={
-                    account
-                      ? "Напиши сообщение (будет видно 2 минуты)..."
-                      : "Подключи кошелек, чтобы писать..."
-                  }
+                  placeholder="Напиши сообщение игрокам (будет видно 2 минуты)..."
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={onChatKeyDown}
-                  disabled={!account}
                 />
-                <button
-                  className="btn small lobby-chat-send"
-                  onClick={sendChat}
-                  disabled={!account}
-                >
+                <button className="btn small lobby-chat-send" onClick={sendChat}>
                   Send
                 </button>
-              </div>
-
-              <div
-                style={{ display: "flex", gap: "8px", alignItems: "center" }}
-              >
-                {/* КНОПКА ДЛЯ ТЕСТА БЕЗ КОШЕЛЬКА */}
-                {!account && (
-                  <button
-                    className="btn small"
-                    onClick={testChatWithoutWallet}
-                    style={{
-                      background: "linear-gradient(135deg, #4CAF50, #2196F3)",
-                      color: "white",
-                      border: "none",
-                    }}
-                  >
-                    Тест чата (без MetaMask)
-                  </button>
-                )}
-
-                <button className="btn outline small" onClick={connectWallet}>
-                  {account ? "Кошелек подключен" : "Подключить кошелек"}
-                </button>
-                {account && (
-                  <>
-                    <button
-                      className="btn outline small"
-                      onClick={handleRefreshBalance}
-                      title="Обновить баланс"
-                    >
-                      ↻ Баланс
-                    </button>
-
-                    {/* Блок покупки токенов в лобби */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        background: "rgba(0, 0, 0, 0.1)",
-                        padding: "4px 8px",
-                        borderRadius: "20px",
-                      }}
-                    >
-                      <input
-                        type="text"
-                        placeholder="ETH"
-                        value={ethInput}
-                        onChange={(e) => setEthInput(e.target.value)}
-                        style={{
-                          padding: "2px 6px",
-                          borderRadius: "999px",
-                          border: "1px solid var(--border-soft)",
-                          background: "rgba(11, 6, 32, 0.9)",
-                          color: "var(--text-main)",
-                          fontSize: "11px",
-                          width: "60px",
-                        }}
-                      />
-                      <button
-                        className="btn small"
-                        onClick={handleBuyTokens}
-                        style={{
-                          padding: "2px 8px",
-                          fontSize: "10px",
-                          background: "rgba(36, 12, 58, 0.85)",
-                          color: "#fff",
-                        }}
-                      >
-                        Купить
-                      </button>
-                    </div>
-                  </>
-                )}
               </div>
             </div>
 
@@ -452,8 +404,7 @@ export default function GameLobby() {
                   </button>
                 </div>
                 <div className="lobby-pillhint">
-                  Host:{" "}
-                  {hostAddress === "HOST" ? "—" : shortenAddress(hostAddress)}
+                  Host: {hostAddress === "HOST" ? "—" : shortenAddress(hostAddress)}
                 </div>
               </div>
 
@@ -479,9 +430,7 @@ export default function GameLobby() {
                   p.address !== "HOST" &&
                   p.address.toLowerCase() === account.toLowerCase();
 
-                const badge =
-                  idx === 0 && filled ? "HOST" : filled ? "PLAYER" : "EMPTY";
-
+                const badge = idx === 0 && filled ? "HOST" : filled ? "PLAYER" : "EMPTY";
                 const text =
                   p.address === "HOST"
                     ? "Waiting host wallet..."
@@ -489,40 +438,19 @@ export default function GameLobby() {
                     ? shortenAddress(p.address)
                     : "Waiting...";
 
-                // Проверяем, нужно ли показывать сообщение чата
-                const showChat =
-                  filled && p.chatText && p.chatUntil > Date.now();
-
-                // Получаем соответствующий аватар для этого слота
+                const showChat = filled && p.chatText && p.chatUntil > Date.now();
                 const avatar = AVATARS[idx] || girl1;
 
                 return (
-                  <div
-                    key={idx}
-                    className={`avatar-card ${filled ? "filled" : ""}`}
-                  >
-                    {/* Бабл сообщения: показываем только если есть текст и не истёк TTL */}
+                  <div key={idx} className={`avatar-card ${filled ? "filled" : ""}`}>
                     {showChat && (
-                      <div
-                        className="chat-bubble"
-                        title="Message disappears in 2 minutes"
-                      >
+                      <div className="chat-bubble" title="Message disappears in 2 minutes">
                         {p.chatText}
                       </div>
                     )}
 
                     {filled ? (
-                      <img
-                        src={avatar}
-                        alt={`player ${idx + 1}`}
-                        className="avatar-img"
-                        style={{
-                          objectFit: "cover",
-                          width: "auto",
-                          height: "100%",
-                          borderRadius: "999px",
-                        }}
-                      />
+                      <img src={avatar} alt={`player ${idx + 1}`} className="avatar-img" />
                     ) : (
                       <div className="avatar-placeholder" />
                     )}
@@ -540,31 +468,27 @@ export default function GameLobby() {
             </div>
 
             <div className="lobby-actions">
-              <button
-                className={`btn ${isHost ? "primary" : "outline"}`}
-                onClick={handleStartGame}
-                disabled={!isHost || filledCount < 2}
-                title={
-                  !isHost
-                    ? "Только host может начать"
-                    : filledCount < 2
-                    ? "Нужно минимум 2 игрока"
-                    : ""
-                }
-              >
-                START GAME
-              </button>
+            <button
+              className={`btn ${isHost ? "primary" : "outline"}`}
+              onClick={handleStartGame}
+              disabled={!isHost || (!DEV_ALLOW_SOLO_START && filledCount < 2)}
+              title={
+                !isHost
+                  ? "Только host может начать"
+                  : (!DEV_ALLOW_SOLO_START && filledCount < 2)
+                  ? "Нужно минимум 2 игрока"
+                  : DEV_ALLOW_SOLO_START
+                  ? "DEV: можно стартовать одному"
+                  : ""
+              }
+            >
+              START GAME
+            </button>
 
-              {!account && (
-                <div className="lobby-note">
-                  Сначала подключи кошелек, чтобы занять слот и писать в чат.
-                </div>
-              )}
               {account && !isHost && (
-                <div className="lobby-note">
-                  Ты в лобби как игрок — жди, пока host нажмёт START.
-                </div>
+                <div className="lobby-note">Ты в лобби как игрок — жди, пока host нажмёт START.</div>
               )}
+
               {filledCount < 2 && account && (
                 <div className="lobby-note" style={{ color: "#ff6b6b" }}>
                   Ожидание игроков... Нужно минимум 2 игрока для старта

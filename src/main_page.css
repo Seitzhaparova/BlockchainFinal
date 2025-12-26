@@ -31,8 +31,11 @@ body {
   min-height: 100vh;
   padding: 24px 40px;
   position: relative;
-  overflow: hidden;
+  /* prevents the glow blur from being cut into a horizontal line */
+  overflow-x: hidden;
+  overflow-y: visible;
 }
+
 
 .glow-circle {
   position: absolute;
@@ -168,8 +171,8 @@ body {
   font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease,
-    color 0.12s ease;
+  transition: transform 0.12s ease, box-shadow 0.12s ease,
+    background 0.12s ease, color 0.12s ease;
 }
 
 .btn.primary {
@@ -265,12 +268,32 @@ body {
 }
 
 /* Статус */
+/* ===== Status / response messages ===== */
 
+/* Default = for LIGHT panels (Lobby / Active / Result) */
 .status-bar {
   margin-top: 10px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+
+  border-top: 1px solid rgba(0, 0, 0, 0.08);  /* darker divider for light bg */
   font-size: 12px;
+
+  color: rgba(36, 12, 58, 0.72);              /* ✅ readable on light bg */
+}
+
+/* Override = for DARK panels (Start page card) */
+.start-card .status-bar {
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  color: var(--text-muted);                    /* ✅ readable on dark bg */
+}
+
+/* Optional helper class if you want messages not tied to status-bar */
+.response-text {
+  font-size: 12px;
+  color: rgba(36, 12, 58, 0.72);
+}
+
+.start-card .response-text {
   color: var(--text-muted);
 }
 
@@ -416,8 +439,9 @@ body {
 html,
 body,
 #root {
-  height: 100%;
-}
+     min-height: 100%;
+   }
+   
 
 .lobby-main {
   position: relative;
@@ -560,15 +584,15 @@ body,
 
 /* аватар */
 .avatar-img {
-  width: 60px;
-  height: 100px;
+  width: 56px;
+  height: 90px;
   object-fit: contain;
   display: block;
 }
 
 .avatar-placeholder {
-  width: 60px;
-  height: 100px;
+  width: 56px;
+  height: 90px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.15);
 }
@@ -619,7 +643,7 @@ body,
 .active-topicBubble {
   border-radius: 18px;
   padding: 12px 14px;
-  background: rgba(255, 155, 227, 0.2);
+  background: rgba(255, 155, 227, 0.20);
   border: 1px solid rgba(0, 0, 0, 0.06);
   color: rgba(36, 12, 58, 0.92);
 }
@@ -650,7 +674,7 @@ body,
   width: 160px;
   height: 260px;
   border-radius: 30px;
-  background: rgba(255, 77, 166, 0.7);
+  background: rgba(255, 77, 166, 0.70);
   position: relative;
 }
 
@@ -664,7 +688,7 @@ body,
   width: 70px;
   height: 70px;
   border-radius: 999px;
-  background: rgba(255, 77, 166, 0.7);
+  background: rgba(255, 77, 166, 0.70);
 }
 
 .active-miniProfile {
@@ -726,11 +750,7 @@ body,
   position: absolute;
   inset: 0;
   border-radius: 18px;
-  background: radial-gradient(
-    circle at 20% 0%,
-    rgba(255, 233, 163, 0.55),
-    rgba(36, 12, 58, 0.22)
-  );
+  background: radial-gradient(circle at 20% 0%, rgba(255, 233, 163, 0.55), rgba(36, 12, 58, 0.22));
   border: 1px dashed rgba(36, 12, 58, 0.25);
 }
 
@@ -753,7 +773,7 @@ body,
   width: 58px;
   height: 58px;
   border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.10);
   background: rgba(255, 255, 255, 0.75);
   cursor: pointer;
   display: grid;
@@ -805,64 +825,76 @@ body,
     justify-content: flex-start;
   }
 }
-/* ===== Game Lobby Chat ===== */
 
-.lobby-chatbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 260px;
-  max-width: 640px;
+.bubble {
+  width: 100%;
+  border-radius: 14px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  color: rgba(36, 12, 58, 0.9);
+}
+/* Smaller girl icons in Lobby */
+.lobby-avatar-img {
+  width: clamp(90px, 10vw, 130px);
+  height: clamp(160px, 18vw, 220px);
+  object-fit: contain;
+  display: block;
 }
 
-.lobby-chat-input {
-  flex: 1;
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  background: rgba(255, 255, 255, 0.75);
-  color: rgba(36, 12, 58, 0.92);
-  font-size: 13px;
-  outline: none;
+.bubble-title {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(36, 12, 58, 0.6);
+  margin-bottom: 4px;
 }
 
-.lobby-chat-input::placeholder {
-  color: rgba(36, 12, 58, 0.45);
+.bubble-text {
+  font-size: 12px;
+  word-break: break-word;
 }
 
-.lobby-chat-send {
-  background: rgba(36, 12, 58, 0.85);
-  color: #fff;
-  border: none;
+
+/* Optional: keep player cards from becoming super tall */
+.lobby-players .avatar-card {
+  align-content: start;
+  gap: 10px;
+  padding-top: 14px;
 }
 
-.lobby-chat-send:hover {
-  background: rgba(36, 12, 58, 0.95);
+/* ===== Game Lobby Chat (bubble over avatar) ===== */
+
+/* IMPORTANT: anchor for absolute bubble */
+.lobby-players .avatar-card {
+  position: relative;
+  overflow: visible; /* so the bubble can go outside the card */
 }
 
-/* Бабл над моделькой */
-.avatar-card {
-  position: relative; /* важно для абсолютного позиционирования чат-бабла */
-}
-
+/* message bubble */
 .chat-bubble {
   position: absolute;
   top: -6px;
   left: 50%;
   transform: translate(-50%, -100%);
+  z-index: 10;
+
   max-width: 170px;
   padding: 8px 10px;
   border-radius: 14px;
+
   background: rgba(255, 255, 255, 0.92);
   border: 2px solid rgba(36, 12, 58, 0.85);
   box-shadow: 0 12px 26px rgba(33, 7, 58, 0.18);
+
   color: rgba(36, 12, 58, 0.92);
   font-size: 12px;
   line-height: 1.2;
+  text-align: center;
   word-break: break-word;
 }
 
+/* bubble tail (border) */
 .chat-bubble::after {
   content: "";
   position: absolute;
@@ -876,6 +908,7 @@ body,
   border-top: 12px solid rgba(36, 12, 58, 0.85);
 }
 
+/* bubble tail (inner fill) */
 .chat-bubble::before {
   content: "";
   position: absolute;
@@ -887,4 +920,74 @@ body,
   border-left: 9px solid transparent;
   border-right: 9px solid transparent;
   border-top: 11px solid rgba(255, 255, 255, 0.92);
+}
+
+/* ===== Lobby chat input + send button ===== */
+
+.lobby-chatbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 260px;
+  max-width: 640px;
+}
+
+/* textbox */
+.lobby-chat-input {
+  flex: 1;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+
+  background: rgba(255, 255, 255, 0.75);
+  color: rgba(36, 12, 58, 0.92);
+
+  font-size: 13px;
+  outline: none;
+  box-shadow: 0 8px 20px rgba(33, 7, 58, 0.08);
+}
+
+.lobby-chat-input::placeholder {
+  color: rgba(36, 12, 58, 0.45);
+}
+
+.lobby-chat-input:focus {
+  border-color: rgba(36, 12, 58, 0.25);
+  box-shadow: 0 10px 26px rgba(33, 7, 58, 0.14);
+}
+
+/* send button (same feel as COPY) */
+.lobby-chat-send {
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+
+  background: rgba(36, 12, 58, 0.85);
+  color: #fff;
+
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  box-shadow: 0 10px 22px rgba(33, 7, 58, 0.18);
+}
+
+.lobby-chat-send:hover {
+  background: rgba(36, 12, 58, 0.95);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(33, 7, 58, 0.22);
+}
+
+.lobby-chat-send:disabled,
+.lobby-chat-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
