@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "../main_page.css";
 
-import { saveOutfit, generateTestPlayersWithOutfits } from "../utils/outfitStorage";
 import iconAccessories from "../assets/icons/accessories.png";
 import iconAppearance from "../assets/icons/appearence.png";
 import iconBottom from "../assets/icons/bottom.png";
@@ -15,7 +14,7 @@ import iconUp from "../assets/icons/up.png";
  * Auto-load png assets (Vite).
  * Paths are relative to: src/pages/Game_Active.jsx
  */
-const BODY_MAP = import.meta.glob("../assets/body/*.png", {
+const BODY_MAP = import.meta.glob("../assets/characters/*.png", {
   eager: true,
   import: "default",
 });
@@ -150,53 +149,37 @@ async function scanBodyMeta(bodyUrl) {
     };
   }
 
-  const head = scanRegionBBox(
-    Math.floor(w * 0.35),
-    0,
-    Math.floor(w * 0.68),
-    Math.floor(h * 0.18)
-  ) ?? {
-    left: w * 0.45,
-    right: w * 0.65,
-    top: 0,
-    bottom: h * 0.12,
-  };
+  const head =
+    scanRegionBBox(Math.floor(w * 0.35), 0, Math.floor(w * 0.68), Math.floor(h * 0.18)) ?? {
+      left: w * 0.45,
+      right: w * 0.65,
+      top: 0,
+      bottom: h * 0.12,
+    };
 
-  const torso = scanRegionBBox(
-    Math.floor(w * 0.3),
-    Math.floor(h * 0.16),
-    Math.floor(w * 0.7),
-    Math.floor(h * 0.55)
-  ) ?? {
-    left: w * 0.38,
-    right: w * 0.62,
-    top: h * 0.2,
-    bottom: h * 0.55,
-  };
+  const torso =
+    scanRegionBBox(Math.floor(w * 0.30), Math.floor(h * 0.16), Math.floor(w * 0.70), Math.floor(h * 0.55)) ?? {
+      left: w * 0.38,
+      right: w * 0.62,
+      top: h * 0.2,
+      bottom: h * 0.55,
+    };
 
-  const hips = scanRegionBBox(
-    Math.floor(w * 0.3),
-    Math.floor(h * 0.3),
-    Math.floor(w * 0.7),
-    Math.floor(h * 0.66)
-  ) ?? {
-    left: w * 0.38,
-    right: w * 0.62,
-    top: h * 0.33,
-    bottom: h * 0.62,
-  };
+  const hips =
+    scanRegionBBox(Math.floor(w * 0.30), Math.floor(h * 0.30), Math.floor(w * 0.70), Math.floor(h * 0.66)) ?? {
+      left: w * 0.38,
+      right: w * 0.62,
+      top: h * 0.33,
+      bottom: h * 0.62,
+    };
 
-  const lower = scanRegionBBox(
-    Math.floor(w * 0.25),
-    Math.floor(h * 0.42),
-    Math.floor(w * 0.75),
-    Math.floor(h * 0.98)
-  ) ?? {
-    left: w * 0.35,
-    right: w * 0.65,
-    top: h * 0.45,
-    bottom: h * 0.98,
-  };
+  const lower =
+    scanRegionBBox(Math.floor(w * 0.25), Math.floor(h * 0.42), Math.floor(w * 0.75), Math.floor(h * 0.98)) ?? {
+      left: w * 0.35,
+      right: w * 0.65,
+      top: h * 0.45,
+      bottom: h * 0.98,
+    };
 
   return { bodyW: w, bodyH: h, head, torso, hips, lower };
 }
@@ -207,18 +190,16 @@ function detectAccessoryType(assetKey, pretty) {
   const has = (s) => k.includes(s) || p.includes(s);
 
   if (has("/hairclips/") || has("hairclip") || has("clip")) return "hairclips";
-  if (has("/headphones/") || has("headphone") || has("headphones"))
-    return "headphones";
+  if (has("/headphones/") || has("headphone") || has("headphones")) return "headphones";
   if (has("/necklace/") || has("necklace")) return "necklace";
-  if (has("/stockings/") || has("stocking") || has("stockings"))
-    return "stockings";
+  if (has("/stockings/") || has("stocking") || has("stockings")) return "stockings";
   if (has("/socks/") || has("sock") || has("socks")) return "socks";
   return "misc";
 }
 
 export default function GameActive() {
   const navigate = useNavigate();
-  const { roomId } = useParams();
+  const { roomId } = useParams(); // ✅ room from /active/:roomId
 
   // ======================
   // TUNING CONSTANTS
@@ -300,25 +281,6 @@ export default function GameActive() {
   const [topic, setTopic] = useState("—");
   const [timeLeft, setTimeLeft] = useState(120);
   const [status, setStatus] = useState("");
-  const [hasSubmitted, setHasSubmitted] = useState(false);
-
-  // ✅ Проверяем подключенный кошелек из метамаска
-  useEffect(() => {
-    const checkWallet = async () => {
-      if (window.ethereum) {
-        try {
-          const accounts = await window.ethereum.request({ method: "eth_accounts" });
-          if (accounts[0]) {
-            setAccount(accounts[0]);
-          }
-        } catch (error) {
-          console.error("Wallet connection error:", error);
-        }
-      }
-    };
-    
-    checkWallet();
-  }, []);
 
   // ✅ take topic from localStorage by roomId if exists (optional)
   useEffect(() => {
@@ -338,38 +300,8 @@ export default function GameActive() {
   }, [timeLeft]);
 
   useEffect(() => {
-    if (timeLeft === 0 && !hasSubmitted) {
-      setStatus("Время вышло! Автоматически сохраняем текущий образ...");
-      handleAutoSubmit();
-    }
-  }, [timeLeft, hasSubmitted]);
-
-  // Автоматическое сохранение при окончании времени
-  const handleAutoSubmit = async () => {
-    if (!account || hasSubmitted) return;
-    
-    const finalOutfit = {
-      body: selected.body,
-      hair: selected.hair,
-      shoes: selected.shoes,
-      up: selected.up,
-      down: selected.down,
-      dress: selected.dress,
-      hairclips: selected.hairclips,
-      headphones: selected.headphones,
-      necklace: selected.necklace,
-      stockings: selected.stockings,
-      socks: selected.socks,
-    };
-
-    saveOutfit(roomId, account, finalOutfit);
-    await generateTestPlayersWithOutfits(roomId, account, assets);
-    
-    setHasSubmitted(true);
-    setTimeout(() => {
-      navigate(`/voting/${roomId}`);
-    }, 2000);
-  };
+    if (timeLeft === 0) setStatus("Время вышло. Образ зафиксирован/ожидание (логика будет позже).");
+  }, [timeLeft]);
 
   async function connectWallet() {
     if (!window.ethereum) {
@@ -377,9 +309,7 @@ export default function GameActive() {
       return;
     }
     try {
-      const accounts = await window.ethereum.request({
-        method: "eth_requestAccounts",
-      });
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
       setAccount(accounts[0]);
       setStatus("Кошелек подключен.");
     } catch (err) {
@@ -397,8 +327,7 @@ export default function GameActive() {
       const order = ["Black", "Blonde", "Brunette", "Pink"];
       const ai = order.findIndex((x) => a.label.includes(x));
       const bi = order.findIndex((x) => b.label.includes(x));
-      if (ai !== -1 || bi !== -1)
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
       return a.label.localeCompare(b.label);
     });
     const shoes = buildAssetList(SHOES_MAP);
@@ -407,14 +336,7 @@ export default function GameActive() {
     const dress = buildAssetList(DRESS_MAP);
 
     const accessoriesAll = buildAssetList(ACCESSORIES_MAP);
-    const accessories = {
-      hairclips: [],
-      headphones: [],
-      necklace: [],
-      stockings: [],
-      socks: [],
-      misc: [],
-    };
+    const accessories = { hairclips: [], headphones: [], necklace: [], stockings: [], socks: [], misc: [] };
     for (const it of accessoriesAll) {
       const t = detectAccessoryType(it.key, it.pretty);
       accessories[t].push(it);
@@ -424,22 +346,10 @@ export default function GameActive() {
   }, []);
 
   // url -> pretty name maps (for kind detection)
-  const downNameByUrl = useMemo(
-    () => new Map(assets.down.map((it) => [it.url, it.pretty])),
-    [assets.down]
-  );
-  const upNameByUrl = useMemo(
-    () => new Map(assets.up.map((it) => [it.url, it.pretty])),
-    [assets.up]
-  );
-  const dressNameByUrl = useMemo(
-    () => new Map(assets.dress.map((it) => [it.url, it.pretty])),
-    [assets.dress]
-  );
-  const shoesNameByUrl = useMemo(
-    () => new Map(assets.shoes.map((it) => [it.url, it.pretty])),
-    [assets.shoes]
-  );
+  const downNameByUrl = useMemo(() => new Map(assets.down.map((it) => [it.url, it.pretty])), [assets.down]);
+  const upNameByUrl = useMemo(() => new Map(assets.up.map((it) => [it.url, it.pretty])), [assets.up]);
+  const dressNameByUrl = useMemo(() => new Map(assets.dress.map((it) => [it.url, it.pretty])), [assets.dress]);
+  const shoesNameByUrl = useMemo(() => new Map(assets.shoes.map((it) => [it.url, it.pretty])), [assets.shoes]);
 
   // Selected outfit (store URLs)
   const [selected, setSelected] = useState(() => ({
@@ -475,7 +385,6 @@ export default function GameActive() {
 
   const [panel, setPanel] = useState("appearance");
 
-  // Все функции выбора НЕ блокируются в активной странице
   function pickBody(url) {
     if (timeIsUp) return;
     setSelected((prev) => ({ ...prev, body: url }));
@@ -486,77 +395,30 @@ export default function GameActive() {
   }
   function pickShoes(url) {
     if (timeIsUp) return;
-    setSelected((prev) => ({
-      ...prev,
-      shoes: prev.shoes === url ? null : url,
-    }));
+    setSelected((prev) => ({ ...prev, shoes: prev.shoes === url ? null : url }));
   }
   function pickUp(url) {
     if (timeIsUp) return;
-    setSelected((prev) => ({
-      ...prev,
-      up: prev.up === url ? null : url,
-      dress: null,
-    }));
+    setSelected((prev) => ({ ...prev, up: prev.up === url ? null : url, dress: null }));
   }
   function pickDown(url) {
     if (timeIsUp) return;
-    setSelected((prev) => ({
-      ...prev,
-      down: prev.down === url ? null : url,
-      dress: null,
-    }));
+    setSelected((prev) => ({ ...prev, down: prev.down === url ? null : url, dress: null }));
   }
   function pickDress(url) {
     if (timeIsUp) return;
-    setSelected((prev) => ({
-      ...prev,
-      dress: prev.dress === url ? null : url,
-      up: null,
-      down: null,
-    }));
+    setSelected((prev) => ({ ...prev, dress: prev.dress === url ? null : url, up: null, down: null }));
   }
   function pickAccessory(type, url) {
     if (timeIsUp) return;
-    setSelected((prev) => ({
-      ...prev,
-      [type]: prev[type] === url ? null : url,
-    }));
+    setSelected((prev) => ({ ...prev, [type]: prev[type] === url ? null : url }));
   }
 
-  // Функция сохранения аутфита и перехода к голосованию
-  async function handleSubmitOutfit() {
+  function handleSubmitOutfit() {
     if (!account) return setStatus("Сначала подключи кошелек.");
-    if (hasSubmitted) return setStatus("Вы уже сохранили образ. Переходим к голосованию...");
-    
-    // 1. Формируем объект аутфита
-    const finalOutfit = {
-      body: selected.body,
-      hair: selected.hair,
-      shoes: selected.shoes,
-      up: selected.up,
-      down: selected.down,
-      dress: selected.dress,
-      hairclips: selected.hairclips,
-      headphones: selected.headphones,
-      necklace: selected.necklace,
-      stockings: selected.stockings,
-      socks: selected.socks,
-    };
-
-    // 2. Сохраняем свой аутфит
-    saveOutfit(roomId, account, finalOutfit);
-
-    // 3. Генерируем ботов с РЕАЛЬНЫМИ аутфитами
-    await generateTestPlayersWithOutfits(roomId, account, assets);
-
-    setHasSubmitted(true);
-    setStatus("Образ сохранён! Переходим к голосованию...");
-
-    // 4. Небольшая задержка и переход
-    setTimeout(() => {
-      navigate(`/voting/${roomId}`);
-    }, 1000);
+    if (timeIsUp) return setStatus("Время вышло — изменить/сохранить нельзя.");
+    setStatus("Образ сохранён. Ждём остальных игроков...");
+    console.log("SUBMIT OUTFIT:", { roomId, selected });
   }
 
   const outfitText = useMemo(() => {
@@ -574,9 +436,7 @@ export default function GameActive() {
     if (selected.necklace) parts.push("Necklace");
     if (selected.stockings) parts.push("Stockings");
     if (selected.socks) parts.push("Socks");
-    return parts.length
-      ? parts.join(" • ")
-      : "Выбери вещи справа, чтобы собрать образ.";
+    return parts.length ? parts.join(" • ") : "Выбери вещи справа, чтобы собрать образ.";
   }, [selected]);
 
   // ===========================
@@ -636,54 +496,38 @@ export default function GameActive() {
 
   useEffect(() => {
     let cancelled = false;
-    getSizeCached(selected.hair)
-      .then((s) => !cancelled && setHairSize(s))
-      .catch(() => !cancelled && setHairSize(null));
+    getSizeCached(selected.hair).then((s) => !cancelled && setHairSize(s)).catch(() => !cancelled && setHairSize(null));
     return () => (cancelled = true);
   }, [selected.hair]);
 
   useEffect(() => {
     let cancelled = false;
-    getSizeCached(selected.up)
-      .then((s) => !cancelled && setUpSize(s))
-      .catch(() => !cancelled && setUpSize(null));
+    getSizeCached(selected.up).then((s) => !cancelled && setUpSize(s)).catch(() => !cancelled && setUpSize(null));
     return () => (cancelled = true);
   }, [selected.up]);
 
   useEffect(() => {
     let cancelled = false;
-    getSizeCached(selected.down)
-      .then((s) => !cancelled && setDownSize(s))
-      .catch(() => !cancelled && setDownSize(null));
+    getSizeCached(selected.down).then((s) => !cancelled && setDownSize(s)).catch(() => !cancelled && setDownSize(null));
     return () => (cancelled = true);
   }, [selected.down]);
 
   useEffect(() => {
     let cancelled = false;
-    getSizeCached(selected.dress)
-      .then((s) => !cancelled && setDressSize(s))
-      .catch(() => !cancelled && setDressSize(null));
+    getSizeCached(selected.dress).then((s) => !cancelled && setDressSize(s)).catch(() => !cancelled && setDressSize(null));
     return () => (cancelled = true);
   }, [selected.dress]);
 
   useEffect(() => {
     let cancelled = false;
-    getSizeCached(selected.shoes)
-      .then((s) => !cancelled && setShoesSize(s))
-      .catch(() => !cancelled && setShoesSize(null));
+    getSizeCached(selected.shoes).then((s) => !cancelled && setShoesSize(s)).catch(() => !cancelled && setShoesSize(null));
     return () => (cancelled = true);
   }, [selected.shoes]);
 
   useEffect(() => {
     let cancelled = false;
     async function run() {
-      const next = {
-        hairclips: null,
-        headphones: null,
-        necklace: null,
-        stockings: null,
-        socks: null,
-      };
+      const next = { hairclips: null, headphones: null, necklace: null, stockings: null, socks: null };
       try {
         next.hairclips = await getSizeCached(selected.hairclips);
         next.headphones = await getSizeCached(selected.headphones);
@@ -695,13 +539,7 @@ export default function GameActive() {
     }
     run();
     return () => (cancelled = true);
-  }, [
-    selected.hairclips,
-    selected.headphones,
-    selected.necklace,
-    selected.stockings,
-    selected.socks,
-  ]);
+  }, [selected.hairclips, selected.headphones, selected.necklace, selected.stockings, selected.socks]);
 
   // ===========================
   // KIND detectors
@@ -731,12 +569,7 @@ export default function GameActive() {
   const shoesKind = useMemo(() => {
     if (!selected.shoes) return null;
     const name = (shoesNameByUrl.get(selected.shoes) || "").toLowerCase();
-    if (
-      name.includes("boot") ||
-      name.includes("boots") ||
-      name.includes("long")
-    )
-      return "long";
+    if (name.includes("boot") || name.includes("boots") || name.includes("long")) return "long";
     if (name.includes("shoes 3") || name.includes("shoes_3")) return "long";
     return "short";
   }, [selected.shoes, shoesNameByUrl]);
@@ -843,16 +676,7 @@ export default function GameActive() {
     );
   }
 
-  function AnchorToBBox({
-    src,
-    size,
-    bbox,
-    widthFactor,
-    xNudge,
-    yNudge,
-    yBase,
-    z,
-  }) {
+  function AnchorToBBox({ src, size, bbox, widthFactor, xNudge, yNudge, yBase, z }) {
     if (!src || !size || !bbox) return null;
     const bw = Math.max(1, bbox.right - bbox.left);
     const cx = (bbox.left + bbox.right) / 2;
@@ -863,17 +687,7 @@ export default function GameActive() {
     const x0 = cx - (size.w * scale) / 2 + xNudge;
     const y0 = yBase + yNudge;
 
-    return (
-      <ScaledLayer
-        src={src}
-        x={x0}
-        y={y0}
-        w={size.w}
-        h={size.h}
-        scale={scale}
-        z={z}
-      />
-    );
+    return <ScaledLayer src={src} x={x0} y={y0} w={size.w} h={size.h} scale={scale} z={z} />;
   }
 
   function UpLayer({ src, z, kind }) {
@@ -888,18 +702,7 @@ export default function GameActive() {
     const torsoH = Math.max(1, torso.bottom - torso.top);
     const yBase = torso.top - torsoH * 0.1;
 
-    return (
-      <AnchorToBBox
-        src={src}
-        size={upSize}
-        bbox={torso}
-        widthFactor={widthFactor}
-        xNudge={xNudge}
-        yNudge={yNudge}
-        yBase={yBase}
-        z={z}
-      />
-    );
+    return <AnchorToBBox src={src} size={upSize} bbox={torso} widthFactor={widthFactor} xNudge={xNudge} yNudge={yNudge} yBase={yBase} z={z} />;
   }
 
   function DownLayer({ src, z, kind }) {
@@ -913,18 +716,7 @@ export default function GameActive() {
 
     const yBase = hips.top;
 
-    return (
-      <AnchorToBBox
-        src={src}
-        size={downSize}
-        bbox={hips}
-        widthFactor={widthFactor}
-        xNudge={xNudge}
-        yNudge={yNudge}
-        yBase={yBase}
-        z={z}
-      />
-    );
+    return <AnchorToBBox src={src} size={downSize} bbox={hips} widthFactor={widthFactor} xNudge={xNudge} yNudge={yNudge} yBase={yBase} z={z} />;
   }
 
   function DressLayer({ src, z, kind }) {
@@ -932,27 +724,14 @@ export default function GameActive() {
     const torso = bodyMeta.torso;
     const isSleeves = kind === "sleeves";
 
-    const widthFactor = isSleeves
-      ? DRESS_SLEEVES_WIDTH_FACTOR
-      : DRESS_NO_SLEEVES_WIDTH_FACTOR;
+    const widthFactor = isSleeves ? DRESS_SLEEVES_WIDTH_FACTOR : DRESS_NO_SLEEVES_WIDTH_FACTOR;
     const xNudge = isSleeves ? DRESS_SLEEVES_X_NUDGE : DRESS_NO_SLEEVES_X_NUDGE;
     const yNudge = isSleeves ? DRESS_SLEEVES_Y_NUDGE : DRESS_NO_SLEEVES_Y_NUDGE;
 
     const torsoH = Math.max(1, torso.bottom - torso.top);
     const yBase = torso.top - torsoH * 0.12;
 
-    return (
-      <AnchorToBBox
-        src={src}
-        size={dressSize}
-        bbox={torso}
-        widthFactor={widthFactor}
-        xNudge={xNudge}
-        yNudge={yNudge}
-        yBase={yBase}
-        z={z}
-      />
-    );
+    return <AnchorToBBox src={src} size={dressSize} bbox={torso} widthFactor={widthFactor} xNudge={xNudge} yNudge={yNudge} yBase={yBase} z={z} />;
   }
 
   function ShoesLayer({ src, z, kind }) {
@@ -960,109 +739,48 @@ export default function GameActive() {
     const lower = bodyMeta.lower;
     const isLong = kind === "long";
 
-    const widthFactor = isLong
-      ? SHOES_LONG_WIDTH_FACTOR
-      : SHOES_SHORT_WIDTH_FACTOR;
+    const widthFactor = isLong ? SHOES_LONG_WIDTH_FACTOR : SHOES_SHORT_WIDTH_FACTOR;
     const xNudge = isLong ? SHOES_LONG_X_NUDGE : SHOES_SHORT_X_NUDGE;
     const yNudge = isLong ? SHOES_LONG_Y_NUDGE : SHOES_SHORT_Y_NUDGE;
 
     const yBase = lower.top;
 
-    return (
-      <AnchorToBBox
-        src={src}
-        size={shoesSize}
-        bbox={lower}
-        widthFactor={widthFactor}
-        xNudge={xNudge}
-        yNudge={yNudge}
-        yBase={yBase}
-        z={z}
-      />
-    );
+    return <AnchorToBBox src={src} size={shoesSize} bbox={lower} widthFactor={widthFactor} xNudge={xNudge} yNudge={yNudge} yBase={yBase} z={z} />;
   }
 
   function HairclipsLayer() {
-    if (!selected.hairclips || !bodyMeta?.head || !accSizes.hairclips)
-      return null;
+    if (!selected.hairclips || !bodyMeta?.head || !accSizes.hairclips) return null;
     const head = bodyMeta.head;
     const headH = Math.max(1, head.bottom - head.top);
     const yBase = head.top - headH * 0.1;
 
-    return (
-      <AnchorToBBox
-        src={selected.hairclips}
-        size={accSizes.hairclips}
-        bbox={head}
-        widthFactor={HAIRCLIPS_WIDTH_FACTOR}
-        xNudge={HAIRCLIPS_X_NUDGE}
-        yNudge={HAIRCLIPS_Y_NUDGE}
-        yBase={yBase}
-        z={Z_HEAD_ACCESSORY}
-      />
-    );
+    return <AnchorToBBox src={selected.hairclips} size={accSizes.hairclips} bbox={head} widthFactor={HAIRCLIPS_WIDTH_FACTOR} xNudge={HAIRCLIPS_X_NUDGE} yNudge={HAIRCLIPS_Y_NUDGE} yBase={yBase} z={Z_HEAD_ACCESSORY} />;
   }
 
   function HeadphonesLayer() {
-    if (!selected.headphones || !bodyMeta?.head || !accSizes.headphones)
-      return null;
+    if (!selected.headphones || !bodyMeta?.head || !accSizes.headphones) return null;
     const head = bodyMeta.head;
     const headH = Math.max(1, head.bottom - head.top);
     const yBase = head.top - headH * 0.08;
 
-    return (
-      <AnchorToBBox
-        src={selected.headphones}
-        size={accSizes.headphones}
-        bbox={head}
-        widthFactor={HEADPHONES_WIDTH_FACTOR}
-        xNudge={HEADPHONES_X_NUDGE}
-        yNudge={HEADPHONES_Y_NUDGE}
-        yBase={yBase}
-        z={Z_HEAD_ACCESSORY}
-      />
-    );
+    return <AnchorToBBox src={selected.headphones} size={accSizes.headphones} bbox={head} widthFactor={HEADPHONES_WIDTH_FACTOR} xNudge={HEADPHONES_X_NUDGE} yNudge={HEADPHONES_Y_NUDGE} yBase={yBase} z={Z_HEAD_ACCESSORY} />;
   }
 
   function NecklaceLayer() {
-    if (!selected.necklace || !bodyMeta?.torso || !accSizes.necklace)
-      return null;
+    if (!selected.necklace || !bodyMeta?.torso || !accSizes.necklace) return null;
     const torso = bodyMeta.torso;
     const torsoH = Math.max(1, torso.bottom - torso.top);
     const yBase = torso.top + torsoH * 0.08;
 
-    return (
-      <AnchorToBBox
-        src={selected.necklace}
-        size={accSizes.necklace}
-        bbox={torso}
-        widthFactor={NECKLACE_WIDTH_FACTOR}
-        xNudge={NECKLACE_X_NUDGE}
-        yNudge={NECKLACE_Y_NUDGE}
-        yBase={yBase}
-        z={Z_NECKLACE}
-      />
-    );
+    return <AnchorToBBox src={selected.necklace} size={accSizes.necklace} bbox={torso} widthFactor={NECKLACE_WIDTH_FACTOR} xNudge={NECKLACE_X_NUDGE} yNudge={NECKLACE_Y_NUDGE} yBase={yBase} z={Z_NECKLACE} />;
   }
 
   function StockingsLayer() {
-    if (!selected.stockings || !bodyMeta?.lower || !accSizes.stockings)
-      return null;
+    if (!selected.stockings || !bodyMeta?.lower || !accSizes.stockings) return null;
     const lower = bodyMeta.lower;
     const yBase = lower.top;
 
-    return (
-      <AnchorToBBox
-        src={selected.stockings}
-        size={accSizes.stockings}
-        bbox={lower}
-        widthFactor={STOCKINGS_WIDTH_FACTOR}
-        xNudge={STOCKINGS_X_NUDGE}
-        yNudge={STOCKINGS_Y_NUDGE}
-        yBase={yBase}
-        z={Z_STOCKINGS}
-      />
-    );
+    return <AnchorToBBox src={selected.stockings} size={accSizes.stockings} bbox={lower} widthFactor={STOCKINGS_WIDTH_FACTOR} xNudge={STOCKINGS_X_NUDGE} yNudge={STOCKINGS_Y_NUDGE} yBase={yBase} z={Z_STOCKINGS} />;
   }
 
   function SocksLayer() {
@@ -1070,35 +788,15 @@ export default function GameActive() {
     const lower = bodyMeta.lower;
     const yBase = lower.top;
 
-    return (
-      <AnchorToBBox
-        src={selected.socks}
-        size={accSizes.socks}
-        bbox={lower}
-        widthFactor={SOCKS_WIDTH_FACTOR}
-        xNudge={SOCKS_X_NUDGE}
-        yNudge={SOCKS_Y_NUDGE}
-        yBase={yBase}
-        z={Z_SOCKS}
-      />
-    );
+    return <AnchorToBBox src={selected.socks} size={accSizes.socks} bbox={lower} widthFactor={SOCKS_WIDTH_FACTOR} xNudge={SOCKS_X_NUDGE} yNudge={SOCKS_Y_NUDGE} yBase={yBase} z={Z_SOCKS} />;
   }
 
   // ===========================
-  // Wardrobe UI
+  // Wardrobe UI (unchanged)
   // ===========================
   function WardrobeGrid({ title, items, selectedUrl, onPick }) {
-    const isDisabled = timeIsUp;
-    
     return (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
+      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
         <div
           style={{
             padding: "10px 12px",
@@ -1108,42 +806,30 @@ export default function GameActive() {
             color: "rgba(36, 12, 58, 0.92)",
             fontWeight: 700,
             marginBottom: 10,
-            opacity: isDisabled ? 0.8 : 1,
           }}
         >
-          {title} {isDisabled ? "(время вышло)" : ""}
+          {title}
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", paddingRight: 6 }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 10,
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
             {items.map((it) => {
               const isSel = selectedUrl === it.url;
               return (
                 <button
                   key={it.key}
                   onClick={() => onPick(it.url)}
-                  disabled={isDisabled}
-                  title={it.pretty + (isDisabled ? " (время вышло)" : "")}
+                  disabled={timeIsUp}
+                  title={it.pretty}
                   style={{
                     borderRadius: 16,
-                    border: isSel
-                      ? "1px solid rgba(255, 77, 166, 0.65)"
-                      : "1px solid rgba(0,0,0,0.10)",
+                    border: isSel ? "1px solid rgba(255, 77, 166, 0.65)" : "1px solid rgba(0,0,0,0.10)",
                     background: "rgba(255,255,255,0.78)",
-                    cursor: isDisabled ? "not-allowed" : "pointer",
+                    cursor: timeIsUp ? "not-allowed" : "pointer",
                     padding: 10,
                     display: "grid",
                     gap: 8,
-                    boxShadow: isSel
-                      ? "0 10px 22px rgba(255, 77, 166, 0.18)"
-                      : "none",
-                    opacity: isDisabled ? 0.7 : 1,
+                    boxShadow: isSel ? "0 10px 22px rgba(255, 77, 166, 0.18)" : "none",
                   }}
                 >
                   <div
@@ -1158,22 +844,12 @@ export default function GameActive() {
                       overflow: "hidden",
                     }}
                   >
-                    <img
-                      src={it.url}
-                      alt={it.pretty}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "contain",
-                        filter: isDisabled ? "grayscale(20%)" : "none",
-                      }}
-                      draggable={false}
-                    />
+                    <img src={it.url} alt={it.pretty} style={{ width: "100%", height: "100%", objectFit: "contain" }} draggable={false} />
                   </div>
                   <div
                     style={{
                       fontSize: 11,
-                      color: isDisabled ? "rgba(36,12,58,0.5)" : "rgba(36,12,58,0.75)",
+                      color: "rgba(36,12,58,0.75)",
                       fontWeight: 700,
                       textAlign: "center",
                       lineHeight: 1.1,
@@ -1194,20 +870,10 @@ export default function GameActive() {
     return (
       <div style={{ width: "100%", height: "100%", display: "grid", gap: 12 }}>
         <div style={{ height: "50%", minHeight: 200 }}>
-          <WardrobeGrid
-            title="Skin (Body)"
-            items={assets.bodies}
-            selectedUrl={selected.body}
-            onPick={pickBody}
-          />
+          <WardrobeGrid title="Skin (Body)" items={assets.bodies} selectedUrl={selected.body} onPick={pickBody} />
         </div>
         <div style={{ height: "50%", minHeight: 200 }}>
-          <WardrobeGrid
-            title="Hair color"
-            items={assets.hairs}
-            selectedUrl={selected.hair}
-            onPick={pickHair}
-          />
+          <WardrobeGrid title="Hair color" items={assets.hairs} selectedUrl={selected.hair} onPick={pickHair} />
         </div>
       </div>
     );
@@ -1215,55 +881,21 @@ export default function GameActive() {
 
   function WardrobeAccessories() {
     return (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          overflowY: "auto",
-          paddingRight: 6,
-          display: "grid",
-          gap: 12,
-        }}
-      >
+      <div style={{ width: "100%", height: "100%", overflowY: "auto", paddingRight: 6, display: "grid", gap: 12 }}>
         <div style={{ minHeight: 240 }}>
-          <WardrobeGrid
-            title="Hairclips"
-            items={assets.accessories.hairclips}
-            selectedUrl={selected.hairclips}
-            onPick={(url) => pickAccessory("hairclips", url)}
-          />
+          <WardrobeGrid title="Hairclips" items={assets.accessories.hairclips} selectedUrl={selected.hairclips} onPick={(url) => pickAccessory("hairclips", url)} />
         </div>
         <div style={{ minHeight: 240 }}>
-          <WardrobeGrid
-            title="Headphones"
-            items={assets.accessories.headphones}
-            selectedUrl={selected.headphones}
-            onPick={(url) => pickAccessory("headphones", url)}
-          />
+          <WardrobeGrid title="Headphones" items={assets.accessories.headphones} selectedUrl={selected.headphones} onPick={(url) => pickAccessory("headphones", url)} />
         </div>
         <div style={{ minHeight: 240 }}>
-          <WardrobeGrid
-            title="Necklace"
-            items={assets.accessories.necklace}
-            selectedUrl={selected.necklace}
-            onPick={(url) => pickAccessory("necklace", url)}
-          />
+          <WardrobeGrid title="Necklace" items={assets.accessories.necklace} selectedUrl={selected.necklace} onPick={(url) => pickAccessory("necklace", url)} />
         </div>
         <div style={{ minHeight: 240 }}>
-          <WardrobeGrid
-            title="Stockings"
-            items={assets.accessories.stockings}
-            selectedUrl={selected.stockings}
-            onPick={(url) => pickAccessory("stockings", url)}
-          />
+          <WardrobeGrid title="Stockings" items={assets.accessories.stockings} selectedUrl={selected.stockings} onPick={(url) => pickAccessory("stockings", url)} />
         </div>
         <div style={{ minHeight: 240 }}>
-          <WardrobeGrid
-            title="Socks"
-            items={assets.accessories.socks}
-            selectedUrl={selected.socks}
-            onPick={(url) => pickAccessory("socks", url)}
-          />
+          <WardrobeGrid title="Socks" items={assets.accessories.socks} selectedUrl={selected.socks} onPick={(url) => pickAccessory("socks", url)} />
         </div>
       </div>
     );
@@ -1271,42 +903,10 @@ export default function GameActive() {
 
   const wardrobeContent = useMemo(() => {
     if (panel === "appearance") return <WardrobeAppearance />;
-    if (panel === "shoes")
-      return (
-        <WardrobeGrid
-          title="Shoes"
-          items={assets.shoes}
-          selectedUrl={selected.shoes}
-          onPick={pickShoes}
-        />
-      );
-    if (panel === "up")
-      return (
-        <WardrobeGrid
-          title="Up"
-          items={assets.up}
-          selectedUrl={selected.up}
-          onPick={pickUp}
-        />
-      );
-    if (panel === "down")
-      return (
-        <WardrobeGrid
-          title="Down"
-          items={assets.down}
-          selectedUrl={selected.down}
-          onPick={pickDown}
-        />
-      );
-    if (panel === "dress")
-      return (
-        <WardrobeGrid
-          title="Dress"
-          items={assets.dress}
-          selectedUrl={selected.dress}
-          onPick={pickDress}
-        />
-      );
+    if (panel === "shoes") return <WardrobeGrid title="Shoes" items={assets.shoes} selectedUrl={selected.shoes} onPick={pickShoes} />;
+    if (panel === "up") return <WardrobeGrid title="Up" items={assets.up} selectedUrl={selected.up} onPick={pickUp} />;
+    if (panel === "down") return <WardrobeGrid title="Down" items={assets.down} selectedUrl={selected.down} onPick={pickDown} />;
+    if (panel === "dress") return <WardrobeGrid title="Dress" items={assets.dress} selectedUrl={selected.dress} onPick={pickDress} />;
     return <WardrobeAccessories />;
   }, [panel, assets, selected, timeIsUp]);
 
@@ -1322,10 +922,7 @@ export default function GameActive() {
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <button
-            className="btn outline small"
-            onClick={() => navigate(`/lobby/${roomId}`)}
-          >
+          <button className="btn outline small" onClick={() => navigate(`/lobby/${roomId}`)}>
             ← Back to Lobby
           </button>
 
@@ -1333,9 +930,7 @@ export default function GameActive() {
             {account ? (
               <>
                 <span className="wallet-label">Кошелек</span>
-                <span className="wallet-address">
-                  {shortenAddress(account)}
-                </span>
+                <span className="wallet-address">{shortenAddress(account)}</span>
                 <span className="lobby-dot ok" />
               </>
             ) : (
@@ -1354,9 +949,7 @@ export default function GameActive() {
             {/* LEFT */}
             <div className="active-leftTop">
               <div className="active-topicBubble">
-                <div className="active-bubbleTitle">
-                  I need to dress in style
-                </div>
+                <div className="active-bubbleTitle">I need to dress in style</div>
                 <div className="active-bubbleText">[{topic}]</div>
                 <div className="active-bubbleText" style={{ opacity: 0.7 }}>
                   Room: {roomId}
@@ -1393,19 +986,11 @@ export default function GameActive() {
                         <>
                           <StockingsLayer />
                           <SocksLayer />
-                          <DressLayer
-                            src={selected.dress}
-                            kind={dressKind}
-                            z={Z_DRESS}
-                          />
+                          <DressLayer src={selected.dress} kind={dressKind} z={Z_DRESS} />
                         </>
                       ) : (
                         <>
-                          <DownLayer
-                            src={selected.down}
-                            kind={downKind}
-                            z={Z_DOWN}
-                          />
+                          <DownLayer src={selected.down} kind={downKind} z={Z_DOWN} />
                           <StockingsLayer />
                           <SocksLayer />
                           <UpLayer src={selected.up} kind={upKind} z={Z_UP} />
@@ -1416,22 +1001,14 @@ export default function GameActive() {
                       <HairLayer src={selected.hair} z={Z_HAIR} />
                       <HairclipsLayer />
                       <HeadphonesLayer />
-                      <ShoesLayer
-                        src={selected.shoes}
-                        kind={shoesKind}
-                        z={shoesZ}
-                      />
+                      <ShoesLayer src={selected.shoes} kind={shoesKind} z={shoesZ} />
                     </div>
                   ) : null}
                 </div>
               </div>
 
               <div className="active-miniProfile">
-                <img
-                  className="active-miniImg"
-                  src={selected.body ?? assets.bodies?.[0]?.url}
-                  alt="player"
-                />
+                <img className="active-miniImg" src={selected.body ?? assets.bodies?.[0]?.url} alt="player" />
                 <div className="active-miniText">
                   <div className="active-miniLabel">ROOM</div>
                   <div className="active-miniValue">{roomId}</div>
@@ -1443,15 +1020,7 @@ export default function GameActive() {
             <div className="active-wardrobe">
               <div className="active-wardrobeFrame">
                 <div className="active-wardrobePlaceholder" />
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 10,
-                    borderRadius: 18,
-                    padding: 10,
-                    overflow: "hidden",
-                  }}
-                >
+                <div style={{ position: "absolute", inset: 10, borderRadius: 18, padding: 10, overflow: "hidden" }}>
                   {wardrobeContent}
                 </div>
               </div>
@@ -1464,139 +1033,39 @@ export default function GameActive() {
               </button>
 
               <div className="active-items">
-                <button
-                  className={`active-item ${
-                    panel === "appearance" ? "selected" : ""
-                  }`}
-                  onClick={() => setPanel("appearance")}
-                  disabled={timeIsUp}
-                  title={timeIsUp ? "Время вышло" : ""}
-                >
+                <button className={`active-item ${panel === "appearance" ? "selected" : ""}`} onClick={() => setPanel("appearance")} disabled={timeIsUp}>
                   <div className="active-itemIcon">
-                    <img
-                      src={iconAppearance}
-                      alt="appearance"
-                      draggable={false}
-                      style={{ 
-                        width: 26, 
-                        height: 26, 
-                        objectFit: "contain",
-                        opacity: timeIsUp ? 0.5 : 1 
-                      }}
-                    />
+                    <img src={iconAppearance} alt="appearance" draggable={false} style={{ width: 26, height: 26, objectFit: "contain" }} />
                   </div>
                 </button>
 
-                <button
-                  className={`active-item ${panel === "up" ? "selected" : ""}`}
-                  onClick={() => setPanel("up")}
-                  disabled={timeIsUp}
-                  title={timeIsUp ? "Время вышло" : ""}
-                >
+                <button className={`active-item ${panel === "up" ? "selected" : ""}`} onClick={() => setPanel("up")} disabled={timeIsUp}>
                   <div className="active-itemIcon">
-                    <img
-                      src={iconUp}
-                      alt="up"
-                      draggable={false}
-                      style={{ 
-                        width: 26, 
-                        height: 26, 
-                        objectFit: "contain",
-                        opacity: timeIsUp ? 0.5 : 1 
-                      }}
-                    />
+                    <img src={iconUp} alt="up" draggable={false} style={{ width: 26, height: 26, objectFit: "contain" }} />
                   </div>
                 </button>
 
-                <button
-                  className={`active-item ${
-                    panel === "down" ? "selected" : ""
-                  }`}
-                  onClick={() => setPanel("down")}
-                  disabled={timeIsUp}
-                  title={timeIsUp ? "Время вышло" : ""}
-                >
+                <button className={`active-item ${panel === "down" ? "selected" : ""}`} onClick={() => setPanel("down")} disabled={timeIsUp}>
                   <div className="active-itemIcon">
-                    <img
-                      src={iconBottom}
-                      alt="bottom"
-                      draggable={false}
-                      style={{ 
-                        width: 26, 
-                        height: 26, 
-                        objectFit: "contain",
-                        opacity: timeIsUp ? 0.5 : 1 
-                      }}
-                    />
+                    <img src={iconBottom} alt="bottom" draggable={false} style={{ width: 26, height: 26, objectFit: "contain" }} />
                   </div>
                 </button>
 
-                <button
-                  className={`active-item ${
-                    panel === "dress" ? "selected" : ""
-                  }`}
-                  onClick={() => setPanel("dress")}
-                  disabled={timeIsUp}
-                  title={timeIsUp ? "Время вышло" : ""}
-                >
+                <button className={`active-item ${panel === "dress" ? "selected" : ""}`} onClick={() => setPanel("dress")} disabled={timeIsUp}>
                   <div className="active-itemIcon">
-                    <img
-                      src={iconDress}
-                      alt="dress"
-                      draggable={false}
-                      style={{ 
-                        width: 26, 
-                        height: 26, 
-                        objectFit: "contain",
-                        opacity: timeIsUp ? 0.5 : 1 
-                      }}
-                    />
+                    <img src={iconDress} alt="dress" draggable={false} style={{ width: 26, height: 26, objectFit: "contain" }} />
                   </div>
                 </button>
 
-                <button
-                  className={`active-item ${
-                    panel === "shoes" ? "selected" : ""
-                  }`}
-                  onClick={() => setPanel("shoes")}
-                  disabled={timeIsUp}
-                  title={timeIsUp ? "Время вышло" : ""}
-                >
+                <button className={`active-item ${panel === "shoes" ? "selected" : ""}`} onClick={() => setPanel("shoes")} disabled={timeIsUp}>
                   <div className="active-itemIcon">
-                    <img
-                      src={iconShoes}
-                      alt="shoes"
-                      draggable={false}
-                      style={{ 
-                        width: 26, 
-                        height: 26, 
-                        objectFit: "contain",
-                        opacity: timeIsUp ? 0.5 : 1 
-                      }}
-                    />
+                    <img src={iconShoes} alt="shoes" draggable={false} style={{ width: 26, height: 26, objectFit: "contain" }} />
                   </div>
                 </button>
 
-                <button
-                  className={`active-item ${
-                    panel === "accessories" ? "selected" : ""
-                  }`}
-                  onClick={() => setPanel("accessories")}
-                  disabled={timeIsUp}
-                  title={timeIsUp ? "Время вышло" : ""}
-                >
+                <button className={`active-item ${panel === "accessories" ? "selected" : ""}`} onClick={() => setPanel("accessories")} disabled={timeIsUp}>
                   <div className="active-itemIcon">
-                    <img
-                      src={iconAccessories}
-                      alt="accessories"
-                      draggable={false}
-                      style={{ 
-                        width: 26, 
-                        height: 26, 
-                        objectFit: "contain",
-                        opacity: timeIsUp ? 0.5 : 1 
-                      }}
-                    />
+                    <img src={iconAccessories} alt="accessories" draggable={false} style={{ width: 26, height: 26, objectFit: "contain" }} />
                   </div>
                 </button>
               </div>
@@ -1611,13 +1080,8 @@ export default function GameActive() {
               <span className="active-timerValue">{formatMMSS(timeLeft)}</span>
             </div>
 
-            <button
-              className={`btn ${hasSubmitted ? "outline" : "primary"}`}
-              onClick={handleSubmitOutfit}
-              disabled={timeIsUp || hasSubmitted}
-              title={hasSubmitted ? "Вы уже сохранили образ" : timeIsUp ? "Время вышло" : ""}
-            >
-              {hasSubmitted ? "Образ сохранён ✓" : timeIsUp ? "Время вышло" : "Finish & Vote"}
+            <button className="btn primary" onClick={handleSubmitOutfit} disabled={timeIsUp}>
+              Save outfit
             </button>
           </div>
 

@@ -268,12 +268,32 @@ body {
 }
 
 /* Статус */
+/* ===== Status / response messages ===== */
 
+/* Default = for LIGHT panels (Lobby / Active / Result) */
 .status-bar {
   margin-top: 10px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+
+  border-top: 1px solid rgba(0, 0, 0, 0.08);  /* darker divider for light bg */
   font-size: 12px;
+
+  color: rgba(36, 12, 58, 0.72);              /* ✅ readable on light bg */
+}
+
+/* Override = for DARK panels (Start page card) */
+.start-card .status-bar {
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  color: var(--text-muted);                    /* ✅ readable on dark bg */
+}
+
+/* Optional helper class if you want messages not tied to status-bar */
+.response-text {
+  font-size: 12px;
+  color: rgba(36, 12, 58, 0.72);
+}
+
+.start-card .response-text {
   color: var(--text-muted);
 }
 
@@ -970,4 +990,49 @@ body,
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+
+/* =========================
+   VOTING LOBBY
+   ========================= */
+
+.voting-top {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 30px;
+  align-items: start;
+}
+
+.voting-instructions {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  padding: 24px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 25px rgba(33, 7, 58, 0.08);
+}
+
+.voting-players {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  padding: 24px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 25px rgba(33, 7, 58, 0.08);
+  min-height: 500px;
+}
+
+/* Анимация пульсации */
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+@media (max-width: 980px) {
+  .voting-top {
+    grid-template-columns: 1fr;
+  }
 }
