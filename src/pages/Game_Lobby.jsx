@@ -3,11 +3,6 @@ import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "../main_page.css";
 
-import girl1 from "../assets/icons_girls/girl1.png";
-import girl2 from "../assets/icons_girls/girl2.png";
-import girl3 from "../assets/icons_girls/girl3.png";
-import girl4 from "../assets/icons_girls/girl4.png";
-
 function shortenAddress(address) {
   if (!address) return "";
   return address.slice(0, 6) + "..." + address.slice(-4);
@@ -34,8 +29,6 @@ async function fetchTokenBalance(_address) {
   return Math.floor(Math.random() * 1000);
 }
 
-const AVATARS = [girl1, girl2, girl3, girl4];
-
 function getEthereum() {
   const eth = window.ethereum;
   if (!eth) return null;
@@ -54,6 +47,17 @@ function buildPlayers(hostAddr, maxPlayers) {
     arr.push({ address: null, role: "EMPTY", chatText: "", chatUntil: 0 });
   }
   return arr.slice(0, mp);
+}
+
+// Загружаем тела динамически
+const BODY_MAP = import.meta.glob("../assets/characters/*.png", {
+  eager: true,
+  import: "default",
+});
+
+function getRandomBody() {
+  const bodies = Object.values(BODY_MAP);
+  return bodies[Math.floor(Math.random() * bodies.length)];
 }
 
 export default function GameLobby() {
@@ -126,7 +130,7 @@ export default function GameLobby() {
         setAccount(acc);
       } catch (e) {
         console.error("wallet init error:", e);
-        setStatus("Ошибка MetaMask. Вернись на стартовую страницу.");
+        setStatus("Ошибка MetaMask. Вернись на стартовой странице.");
         navigate("/", { replace: true });
       }
     }
@@ -439,7 +443,6 @@ export default function GameLobby() {
                     : "Waiting...";
 
                 const showChat = filled && p.chatText && p.chatUntil > Date.now();
-                const avatar = AVATARS[idx] || girl1;
 
                 return (
                   <div key={idx} className={`avatar-card ${filled ? "filled" : ""}`}>
@@ -450,7 +453,16 @@ export default function GameLobby() {
                     )}
 
                     {filled ? (
-                      <img src={avatar} alt={`player ${idx + 1}`} className="avatar-img" />
+                      <img 
+                        src={getRandomBody()} 
+                        alt={`player ${idx + 1}`} 
+                        style={{ 
+                          width: "80px", 
+                          height: "140px", 
+                          objectFit: "contain",
+                          display: "block"
+                        }} 
+                      />
                     ) : (
                       <div className="avatar-placeholder" />
                     )}
