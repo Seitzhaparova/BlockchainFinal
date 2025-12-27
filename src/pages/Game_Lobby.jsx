@@ -2,11 +2,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "../main_page.css";
-
 import { formatUnits } from "ethers";
+
 import { connectWallet, getProvider, getSigner } from "../web3/eth.js";
 import { getAddresses, getRoom, getToken } from "../web3/contracts.js";
-import * as Topics from "../web3/topics.js"; // used if it exports topic list / getter
+import * as Topics from "../web3/topics.js";
 
 function shortenAddress(address) {
   if (!address) return "";
@@ -22,335 +22,273 @@ const BODY_MAP = import.meta.glob("../assets/characters/*.png", {
   eager: true,
   import: "default",
 });
-const ICON_MAP = import.meta.glob("../assets/icons_girls/*.png", {
-  eager: true,
-  import: "default",
-});
 
-const FALLBACK_TOPICS = [
-  "NEON GLAM",
-  "CYBER FAIRY",
-  "FUTURISTIC RUNWAY",
-  "Y2K ICON",
-  "DARK ELEGANCE",
-  "STUDY DATE AT THE LIBRARY",
-];
-
-function pickRandom(arr) {
-  if (!arr?.length) return null;
-  return arr[Math.floor(Math.random() * arr.length)];
+function pickRandomBody() {
+  const bodies = Object.values(BODY_MAP);
+  if (!bodies.length) return null;
+  return bodies[Math.floor(Math.random() * bodies.length)];
 }
 
-function isZeroAddress(a) {
+function parseEthersError(e) {
+  // ethers v6 shapes
   return (
-    !a ||
-    a === "0x0000000000000000000000000000000000000000" ||
-    a.toLowerCase?.() === "0x0000000000000000000000000000000000000000"
+    e?.shortMessage ||
+    e?.info?.error?.message ||
+    e?.error?.message ||
+    e?.reason ||
+    e?.message ||
+    "Transaction failed"
   );
 }
 
-function toNum(x, fallback = 0) {
-  try {
-    if (x == null) return fallback;
-    if (typeof x === "number") return Number.isFinite(x) ? x : fallback;
-    if (typeof x === "bigint") return Number(x);
-    if (typeof x === "string") {
-      const n = Number(x);
-      return Number.isFinite(n) ? n : fallback;
-    }
-    if (Array.isArray(x) && x.length === 1) return toNum(x[0], fallback);
-    return fallback;
-  } catch {
-    return fallback;
-  }
-}
+function topicLabelFromId(topicIdNumber) {
+  // Try common exports from src/web3/topics.js, otherwise fallback
+  const n = Number(topicIdNumber);
+  if (!Number.isFinite(n)) return "—";
 
-function getTopicTextFromId(topicIdNum) {
-  // 1) if your topics.js has a function
-  if (typeof Topics.getTopicText === "function") {
-    const t = Topics.getTopicText(topicIdNum);
-    if (t) return t;
+  // 1) function getTopicById(id)
+  if (typeof Topics.getTopicById === "function") {
+    try {
+      const t = Topics.getTopicById(n);
+      if (t) return t;
+    } catch {}
   }
 
-  // 2) if it exports arrays/maps
+  // 2) array exports
   const arr =
     Topics.TOPICS ||
-    Topics.GAME_TOPICS ||
-    Topics.topicList ||
+    Topics.TOPIC_NAMES ||
     Topics.TOPIC_LIST ||
+    Topics.topics ||
     null;
 
-  if (Array.isArray(arr) && arr[topicIdNum]) return arr[topicIdNum];
+  if (Array.isArray(arr) && arr[n]) return arr[n];
 
-  const map = Topics.TOPIC_MAP || Topics.topicMap || null;
-  if (map && map[topicIdNum]) return map[topicIdNum];
-
-  // 3) fallback
-  if (FALLBACK_TOPICS[topicIdNum]) return FALLBACK_TOPICS[topicIdNum];
-  return topicIdNum >= 0 ? `Topic #${topicIdNum}` : "—";
+  // 3) fallback hardcoded
+  const FALLBACK = [
+    "Cozy girls' sleepover",
+    "Study date at the library",
+    "Running errands and grocery shopping",
+    "Brunch at the city mall",
+    "Neon glam party night",
+  ];
+  return FALLBACK[n] || `Topic #${n}`;
 }
 
 export default function GameLobby() {
   const navigate = useNavigate();
-  const { roomId } = useParams(); // room contract address
+  const { roomId } = useParams(); // roomId is the ROOM ADDRESS (0x...)
 
   const [account, setAccount] = useState(null);
-  const [status, setStatus] = useState("");
 
-  const [roomTopic, setRoomTopic] = useState("—");
-  const [roomHost, setRoomHost] = useState("—");
-  const [maxPlayers, setMaxPlayers] = useState(2);
+  const [host, setHost] = useState("");
+  const [topic, setTopic] = useState("—");
   const [phase, setPhase] = useState(0);
 
-  const [betHuman, setBetHuman] = useState("—");
-  const [betRaw, setBetRaw] = useState(null);
+  const [maxPlayers, setMaxPlayers] = useState(2);
+  const [playersOnChain, setPlayersOnChain] = useState([]); // address[]
+  const [joinedMe, setJoinedMe] = useState(false);
 
-  const [players, setPlayers] = useState([]); // normalized array length=maxPlayers
+  const [betRaw, setBetRaw] = useState(0n);
+  const [tokenDecimals, setTokenDecimals] = useState(18);
+  const [betDisplay, setBetDisplay] = useState("0");
+
+  const [myBalRaw, setMyBalRaw] = useState(0n);
+  const [myBalDisplay, setMyBalDisplay] = useState("0");
+
+  const [myAllowanceRaw, setMyAllowanceRaw] = useState(0n);
+
+  const [status, setStatus] = useState("");
+  const [busyJoin, setBusyJoin] = useState(false);
+  const [busyStart, setBusyStart] = useState(false);
+
+  // Chat (UI-only, not shared between users)
   const [chatInput, setChatInput] = useState("");
-  const [chatByAddr, setChatByAddr] = useState({}); // { addrLower: {text, until} }
+  const [chatByAddr, setChatByAddr] = useState({}); // { [addrLower]: { text, until } }
 
-  // stable avatar per address
-  const avatarRef = useRef(new Map());
-  const tokenDecimalsRef = useRef(null);
+  // Stable avatar per address
+  const bodiesRef = useRef(new Map());
+  const getBodyFor = (addr) => {
+    if (!addr) return null;
+    const k = addr.toLowerCase();
+    if (bodiesRef.current.has(k)) return bodiesRef.current.get(k);
+    const b = pickRandomBody();
+    bodiesRef.current.set(k, b);
+    return b;
+  };
 
-  const avatarPool = useMemo(() => {
-    const bodies = Object.values(BODY_MAP || {});
-    const icons = Object.values(ICON_MAP || {});
-    return bodies.length ? bodies : icons.length ? icons : [];
-  }, []);
-
-  function getAvatar(address, index) {
-    const key = address ? address.toLowerCase() : `empty_${index}`;
-    if (avatarRef.current.has(key)) return avatarRef.current.get(key);
-    const picked = pickRandom(avatarPool);
-    avatarRef.current.set(key, picked);
-    return picked;
-  }
-
-  // wallet (no popup)
+  // 1) Auto-detect wallet (no popup)
   useEffect(() => {
-    const eth = window.ethereum;
-    if (!eth) {
-      setStatus("MetaMask not found. Install/enable extension.");
-      return;
-    }
+    let mounted = true;
 
-    let alive = true;
-
-    (async () => {
+    async function init() {
       try {
-        const accs = await eth.request({ method: "eth_accounts" });
-        const acc = accs?.[0] ?? null;
-        if (!alive) return;
+        const provider = await getProvider();
+        const accounts = await provider.send("eth_accounts", []);
+        const acc = accounts?.[0] || null;
+        if (!mounted) return;
         setAccount(acc);
       } catch (e) {
-        console.error(e);
-        if (!alive) return;
-        setStatus("MetaMask error: cannot read accounts.");
+        setAccount(null);
       }
-    })();
+    }
 
-    const onAccountsChanged = (accs) => setAccount(accs?.[0] ?? null);
-    const onChainChanged = () => window.location.reload();
-
-    eth.on?.("accountsChanged", onAccountsChanged);
-    eth.on?.("chainChanged", onChainChanged);
-
+    init();
     return () => {
-      alive = false;
-      eth.removeListener?.("accountsChanged", onAccountsChanged);
-      eth.removeListener?.("chainChanged", onChainChanged);
+      mounted = false;
     };
   }, []);
 
   async function handleConnect() {
     try {
+      setStatus("");
       const acc = await connectWallet();
       setAccount(acc);
-      setStatus(acc ? "Connected." : "Not connected.");
     } catch (e) {
-      console.error(e);
-      setStatus(e?.message || "Failed to connect MetaMask.");
+      setStatus(parseEthersError(e));
     }
   }
 
-  // ---- room polling ----
-  const loadRoomRef = useRef(null);
-
+  // 2) Load room state (poll)
   useEffect(() => {
     if (!roomId) return;
 
-    let stop = false;
+    let alive = true;
     let timer = null;
 
     async function load() {
       try {
+        setStatus("");
         const provider = await getProvider();
         const room = getRoom(roomId, provider);
 
-        // read base info (exact ABI names)
-        const host = await room.host();
-        const mp = toNum(await room.maxPlayers(), 2);
-        const ph = toNum(await room.phase(), 0);
-        const topicId = toNum(await room.topicId(), -1);
-        const bet = await room.betAmount();
-        const rawPlayers = await room.getPlayers(); // address[]
+        const [h, b, mp, tId, ph, ps] = await Promise.all([
+          room.host(),
+          room.betAmount(),
+          room.maxPlayers(),
+          room.topicId(),
+          room.phase(),
+          room.getPlayers(),
+        ]);
 
-        if (!stop) {
-          setRoomHost(host && !isZeroAddress(host) ? host : "—");
-          setMaxPlayers(Math.max(2, mp));
-          setPhase(ph);
-          setBetRaw(bet);
+        if (!alive) return;
 
-          // topic mapping ✅
-          setRoomTopic(getTopicTextFromId(topicId));
+        setHost(h);
+        setBetRaw(b);
+        setMaxPlayers(Number(mp));
+        setPhase(Number(ph));
+        setPlayersOnChain(ps || []);
 
-          // bet display
-          try {
-            let decimals = tokenDecimalsRef.current;
-            if (decimals == null) {
-              const { token } = getAddresses();
-              if (token) {
-                const t = getToken(token, provider);
-                decimals = toNum(await t.decimals(), 18);
-              } else {
-                decimals = 18;
-              }
-              tokenDecimalsRef.current = decimals;
-            }
-            setBetHuman(formatUnits(bet, decimals));
-          } catch {
-            setBetHuman(String(bet));
-          }
+        const tLabel = topicLabelFromId(tId);
+        setTopic(tLabel);
 
-          // normalize players into fixed slots
-          const arr = Array.isArray(rawPlayers) ? rawPlayers.filter((a) => !isZeroAddress(a)) : [];
-          // make sure host is first slot visually (better UI)
-          const normalized = [];
-          if (host && !isZeroAddress(host)) {
-            normalized.push(host);
-          }
-          for (const a of arr) {
-            if (normalized.some((x) => x.toLowerCase() === a.toLowerCase())) continue;
-            normalized.push(a);
-          }
+        // token info
+        const { token: tokenAddr } = getAddresses();
+        const token = getToken(tokenAddr, provider);
 
-          const slots = new Array(Math.max(2, mp)).fill(null).map((_, i) => {
-            const addr = normalized[i] ?? null;
-            const filled = !!addr;
-            const role =
-              filled && host && addr.toLowerCase() === host.toLowerCase()
-                ? "HOST"
-                : filled
-                ? "PLAYER"
-                : "EMPTY";
-            return { address: filled ? addr : null, role };
-          });
+        let dec = 18;
+        try {
+          dec = Number(await token.decimals());
+        } catch {}
+        setTokenDecimals(dec);
+        setBetDisplay(formatUnits(b, dec));
 
-          setPlayers(slots);
-          // clear load error
-          setStatus((s) => (s.startsWith("Failed to load room state") ? "" : s));
+        // per-account info
+        if (account) {
+          const [joined, bal, allowance] = await Promise.all([
+            room.joined(account),
+            token.balanceOf(account),
+            token.allowance(account, roomId),
+          ]);
+          if (!alive) return;
+          setJoinedMe(!!joined);
+          setMyBalRaw(bal);
+          setMyBalDisplay(formatUnits(bal, dec));
+          setMyAllowanceRaw(allowance);
+        } else {
+          setJoinedMe(false);
+          setMyBalRaw(0n);
+          setMyBalDisplay("0");
+          setMyAllowanceRaw(0n);
         }
       } catch (e) {
-        console.error(e);
-        if (!stop) setStatus("Failed to load room state (check ABI / address / network).");
+        if (!alive) return;
+        setStatus("Failed to load room state (check ABI / address / network).");
+        // console helps you debug
+        console.error("load room error:", e);
       }
     }
 
-    loadRoomRef.current = load;
     load();
     timer = setInterval(load, REFRESH_MS);
 
     return () => {
-      stop = true;
+      alive = false;
       if (timer) clearInterval(timer);
     };
-  }, [roomId]);
+  }, [roomId, account]);
 
-  // phase routing
+  // 3) Chat TTL cleanup
   useEffect(() => {
-    if (!roomId) return;
-    if (phase === 1) navigate(`/active/${roomId}`, { replace: true });
-    if (phase === 2) navigate(`/voting/${roomId}`, { replace: true });
-    if (phase === 3) navigate(`/result/${roomId}`, { replace: true });
-  }, [phase, roomId, navigate]);
-
-  // ---- chat (localStorage room scoped) ----
-  const CHAT_KEY = useMemo(() => (roomId ? `dc_chat_${roomId}` : null), [roomId]);
-
-  function loadChatMap() {
-    if (!CHAT_KEY) return {};
-    try {
-      const raw = localStorage.getItem(CHAT_KEY);
-      const arr = raw ? JSON.parse(raw) : [];
+    const id = setInterval(() => {
       const now = Date.now();
-
-      const map = {};
-      for (const m of arr) {
-        if (!m?.from || !m?.text) continue;
-        if (m.until && m.until <= now) continue;
-        map[String(m.from).toLowerCase()] = { text: m.text, until: m.until };
-      }
-      return map;
-    } catch {
-      return {};
-    }
-  }
-
-  useEffect(() => {
-    if (!CHAT_KEY) return;
-    setChatByAddr(loadChatMap());
-
-    const onStorage = (e) => {
-      if (e.key === CHAT_KEY) setChatByAddr(loadChatMap());
-    };
-    window.addEventListener("storage", onStorage);
-
-    const t = setInterval(() => {
       setChatByAddr((prev) => {
-        const now = Date.now();
         let changed = false;
         const next = { ...prev };
-        for (const k of Object.keys(next)) {
+        Object.keys(next).forEach((k) => {
           if (next[k]?.until && next[k].until <= now) {
             delete next[k];
             changed = true;
           }
-        }
+        });
         return changed ? next : prev;
       });
     }, 1000);
+    return () => clearInterval(id);
+  }, []);
 
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      clearInterval(t);
-    };
-  }, [CHAT_KEY]);
+  const filledCount = playersOnChain.length || 0;
+  const isHost = useMemo(() => {
+    if (!account || !host) return false;
+    return account.toLowerCase() === host.toLowerCase();
+  }, [account, host]);
 
-  function saveChatMessage(from, text) {
-    if (!CHAT_KEY) return;
-    const now = Date.now();
-    const msg = { from, text, until: now + CHAT_TTL_MS, ts: now };
+  const phaseLabel = PHASE[phase] || `Phase ${phase}`;
 
+  const needsApproval = useMemo(() => {
+    if (!account) return false;
+    if (!joinedMe && betRaw > 0n && myAllowanceRaw < betRaw) return true;
+    return false;
+  }, [account, joinedMe, betRaw, myAllowanceRaw]);
+
+  // Build UI slots
+  const slots = useMemo(() => {
+    const mp = Math.max(2, Number(maxPlayers) || 2);
+    const arr = [];
+    for (let i = 0; i < mp; i++) {
+      arr.push(playersOnChain[i] || null);
+    }
+    return arr;
+  }, [playersOnChain, maxPlayers]);
+
+  async function handleCopyRoom() {
     try {
-      const raw = localStorage.getItem(CHAT_KEY);
-      const arr = raw ? JSON.parse(raw) : [];
-      const cleaned = (Array.isArray(arr) ? arr : []).filter((m) => m?.until > now);
-      cleaned.push(msg);
-      localStorage.setItem(CHAT_KEY, JSON.stringify(cleaned.slice(-200)));
-    } catch {}
-
-    setChatByAddr((prev) => ({
-      ...prev,
-      [String(from).toLowerCase()]: { text, until: msg.until },
-    }));
+      await navigator.clipboard.writeText(roomId || "");
+      setStatus("Room address copied.");
+    } catch {
+      setStatus("Copy failed.");
+    }
   }
 
   function sendChat() {
     if (!account) return setStatus("Connect wallet first.");
     const text = chatInput.trim();
     if (!text) return;
-    saveChatMessage(account, text);
+    const key = account.toLowerCase();
+    setChatByAddr((prev) => ({
+      ...prev,
+      [key]: { text, until: Date.now() + CHAT_TTL_MS },
+    }));
     setChatInput("");
   }
 
@@ -361,91 +299,88 @@ export default function GameLobby() {
     }
   }
 
-  const filledCount = useMemo(() => players.filter((p) => !!p.address).length, [players]);
-
-  const isHost = useMemo(() => {
-    if (!account || !roomHost || roomHost === "—") return false;
-    return account.toLowerCase() === roomHost.toLowerCase();
-  }, [account, roomHost]);
-
-  const isJoined = useMemo(() => {
-    if (!account) return false;
-    return players.some(
-      (p) => p.address && p.address.toLowerCase() === account.toLowerCase()
-    );
-  }, [players, account]);
-
-  function handleCopyRoomAddress() {
-    const text = roomId || "";
-    if (!text) return;
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text);
-      setStatus("Room address copied.");
-    } else {
-      setStatus("Clipboard not available.");
-    }
-  }
-
-  // ✅ JOIN TX: approve + joinGame()
   async function handleJoinGame() {
-    if (!roomId) return setStatus("Room address missing.");
     if (!account) return setStatus("Connect wallet first.");
+    if (!roomId) return setStatus("Room address missing.");
 
     try {
-      setStatus("Joining… confirm in MetaMask.");
+      setBusyJoin(true);
+      setStatus("");
 
+      const provider = await getProvider();
       const signer = await getSigner();
-      const room = getRoom(roomId, signer);
 
-      // approve DCT if needed
-      const { token } = getAddresses();
-      if (token && betRaw != null) {
-        const t = getToken(token, signer);
+      const roomRead = getRoom(roomId, provider);
+      const roomWrite = getRoom(roomId, signer);
 
-        if (typeof t.allowance === "function" && typeof t.approve === "function") {
-          const allowance = await t.allowance(account, roomId);
-          if (allowance < betRaw) {
-            setStatus("Approving DCT… confirm in MetaMask.");
-            const txA = await t.approve(roomId, betRaw);
-            await txA.wait();
-          }
+      const { token: tokenAddr } = getAddresses();
+      const tokenRead = getToken(tokenAddr, provider);
+      const tokenWrite = getToken(tokenAddr, signer);
+
+      // pre-checks (so MetaMask doesn’t fail silently)
+      const [ph, alreadyJoined, bAmount, bal, allowance] = await Promise.all([
+        roomRead.phase(),
+        roomRead.joined(account),
+        roomRead.betAmount(),
+        tokenRead.balanceOf(account),
+        tokenRead.allowance(account, roomId),
+      ]);
+
+      const phN = Number(ph);
+      if (phN !== 0) return setStatus(`Cannot join: phase is ${PHASE[phN] || phN}`);
+      if (alreadyJoined) return setStatus("You already joined this room.");
+      if (bal < bAmount) return setStatus("Not enough DCT balance for the bet.");
+
+      // APPROVE if needed
+      if (allowance < bAmount) {
+        setStatus("Approving DCT… (confirm in MetaMask)");
+        // some tokens require setting to 0 first
+        if (allowance > 0n) {
+          const tx0 = await tokenWrite.approve(roomId, 0n);
+          await tx0.wait();
         }
+        const txA = await tokenWrite.approve(roomId, bAmount);
+        await txA.wait();
       }
 
-      const tx = await room.joinGame();
-      await tx.wait();
+      // JOIN
+      setStatus("Joining game… (confirm in MetaMask)");
+      const txJ = await roomWrite.joinGame();
+      await txJ.wait();
 
       setStatus("Joined ✅");
-      await loadRoomRef.current?.();
+      // next poll will refresh players list
     } catch (e) {
-      console.error(e);
-      const msg = e?.shortMessage || e?.reason || e?.message || "Join failed.";
-      setStatus(msg);
+      console.error("join error:", e);
+      setStatus(parseEthersError(e));
+    } finally {
+      setBusyJoin(false);
     }
   }
 
-  // ✅ START: solo UI testing without contract revert
   async function handleStartGame() {
     if (!account) return setStatus("Connect wallet first.");
-    if (!isHost) return setStatus("Only host can start.");
-    if (!roomId) return setStatus("Room address missing.");
-
-    if (filledCount < 1) return setStatus("Need at least 1 player");
+    if (!isHost) return setStatus("Only host can start the game.");
+    if (filledCount < 2) return setStatus("Need 2+ players to start (contract rule).");
 
     try {
-      setStatus("Starting… confirm in MetaMask.");
+      setBusyStart(true);
+      setStatus("");
+
       const signer = await getSigner();
       const room = getRoom(roomId, signer);
 
+      setStatus("Starting game… (confirm in MetaMask)");
       const tx = await room.startGame();
       await tx.wait();
 
-      setStatus("Game started ✅");
+      // After startGame phase becomes Styling, so go Active
       navigate(`/active/${roomId}`);
     } catch (e) {
-      console.error(e);
-      const msg = e?.shortMessage || e?.reason || e?.message || "Start failed.";
-      setStatus(msg);
+      console.error("start error:", e);
+      setStatus(parseEthersError(e));
+    } finally {
+      setBusyStart(false);
     }
   }
 
@@ -462,21 +397,20 @@ export default function GameLobby() {
 
         <div className="wallet-pill">
           {account ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <>
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <span className="wallet-label">WALLET</span>
                 <span className="wallet-address">{shortenAddress(account)}</span>
               </div>
               <span className="lobby-dot ok" />
-            </div>
+            </>
           ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <>
               <span className="wallet-disconnected">Not connected</span>
               <button className="btn small" onClick={handleConnect}>
                 Connect
               </button>
-              <span className="lobby-dot" />
-            </div>
+            </>
           )}
         </div>
       </header>
@@ -484,15 +418,15 @@ export default function GameLobby() {
       <main className="lobby-main">
         <div className="lobby-body">
           <section className="lobby-left">
-            {/* top row */}
+            {/* top row: back + chat */}
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                marginBottom: 16,
+                marginBottom: "16px",
                 flexWrap: "wrap",
-                gap: 12,
+                gap: "12px",
               }}
             >
               <button className="btn outline small" onClick={() => navigate("/")}>
@@ -513,24 +447,21 @@ export default function GameLobby() {
               </div>
             </div>
 
-            {/* meta */}
             <div className="lobby-meta">
               <div className="lobby-pillbox">
                 <div className="lobby-pilllabel">GAME ROOM</div>
-                <div className="lobby-pillvalue" style={{ gap: 10 }}>
-                  <span>{roomId ? shortenAddress(roomId) : "—"}</span>
-                  <button className="btn small copy" onClick={handleCopyRoomAddress}>
+                <div className="lobby-pillvalue">
+                  <span>{shortenAddress(roomId || "")}</span>
+                  <button className="btn small copy" onClick={handleCopyRoom}>
                     COPY
                   </button>
                 </div>
-                <div className="lobby-pillhint">
-                  Host: {roomHost === "—" ? "—" : shortenAddress(roomHost)}
-                </div>
+                <div className="lobby-pillhint">Host: {shortenAddress(host)}</div>
               </div>
 
               <div className="lobby-pillbox">
                 <div className="lobby-pilllabel">GAME TOPIC</div>
-                <div className="lobby-pillvalue">{roomTopic}</div>
+                <div className="lobby-pillvalue">{topic}</div>
               </div>
 
               <div className="lobby-pillbox">
@@ -541,133 +472,94 @@ export default function GameLobby() {
               </div>
             </div>
 
-            {/* bet / phase */}
-            <div style={{ marginTop: 10, opacity: 0.9 }}>
-              <div style={{ fontSize: 12 }}>
-                <strong>Bet:</strong> {betHuman} DCT
-              </div>
-              <div style={{ fontSize: 12 }}>
-                <strong>Phase:</strong> {PHASE[phase] ?? String(phase)}
-              </div>
+            <div style={{ marginTop: 10, color: "rgba(255,255,255,0.75)" }}>
+              <div>Bet: {betDisplay} DCT</div>
+              <div>Phase: {phaseLabel}</div>
+              <div>Your balance: {myBalDisplay} DCT</div>
             </div>
 
-            {/* players grid (big avatars) */}
-            <div className="lobby-players" style={{ marginTop: 16 }}>
-              {players.map((p, idx) => {
-                const filled = !!p.address;
-                const you =
-                  account &&
-                  p.address &&
-                  p.address.toLowerCase() === account.toLowerCase();
+            <div className="lobby-players" style={{ marginTop: 18 }}>
+              {slots.map((addr, idx) => {
+                const filled = !!addr;
+                const isMe = account && addr && addr.toLowerCase() === account.toLowerCase();
+                const isSlotHost = host && addr && addr.toLowerCase() === host.toLowerCase();
 
-                const badge = p.role === "HOST" ? "HOST" : filled ? "PLAYER" : "EMPTY";
-                const displayName = filled
-                  ? you
-                    ? "You"
-                    : shortenAddress(p.address)
-                  : "Waiting…";
-
-                const chat = filled ? chatByAddr[p.address.toLowerCase()] : null;
-                const showChat = !!chat?.text && chat.until > Date.now();
-
-                const avatarSrc = filled ? getAvatar(p.address, idx) : null;
+                const chat = addr ? chatByAddr[addr.toLowerCase()] : null;
+                const showChat = !!chat && chat.until > Date.now();
 
                 return (
-                  <div
-                    key={idx}
-                    className={`avatar-card ${filled ? "filled" : ""}`}
-                    style={{
-                      position: "relative",
-                      overflow: "hidden",
-                      minHeight: 340,
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "flex-end",
-                      paddingTop: 18,
-                    }}
-                  >
+                  <div key={idx} className={`avatar-card ${filled ? "filled" : ""}`}>
                     {showChat && (
-                      <div
-                        className="chat-bubble"
-                        style={{
-                          position: "absolute",
-                          top: 10,
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          maxWidth: "85%",
-                          zIndex: 3,
-                        }}
-                        title="Disappears in 2 minutes"
-                      >
+                      <div className="chat-bubble" title="Message disappears in 2 minutes">
                         {chat.text}
                       </div>
                     )}
 
-                    <div
-                      style={{
-                        width: "100%",
-                        height: 250,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        padding: "0 8px",
-                      }}
-                    >
-                      {filled && avatarSrc ? (
-                        <img
-                          src={avatarSrc}
-                          alt={`player-${idx}`}
-                          style={{
-                            width: "170px",
-                            height: "250px",
-                            objectFit: "contain",
-                            display: "block",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          className="avatar-placeholder"
-                          style={{ width: 170, height: 250, borderRadius: 18 }}
-                        />
-                      )}
-                    </div>
+                    {filled ? (
+                      <img
+                        src={getBodyFor(addr)}
+                        alt="player"
+                        style={{
+                          width: "220px",
+                          height: "320px",
+                          objectFit: "contain",
+                          display: "block",
+                          margin: "0 auto",
+                        }}
+                      />
+                    ) : (
+                      <div className="avatar-placeholder" style={{ height: 320 }} />
+                    )}
 
-                    <div className="bubble" style={{ width: "100%" }}>
+                    <div className="bubble">
                       <div className="bubble-title">
-                        {badge}
-                        {you ? " • YOU" : ""}
+                        {isSlotHost ? "HOST" : filled ? "PLAYER" : "EMPTY"}
+                        {isMe ? " • YOU" : ""}
                       </div>
-                      <div className="bubble-text">{displayName}</div>
+                      <div className="bubble-text">
+                        {filled ? shortenAddress(addr) : "Waiting…"}
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* actions */}
-            <div className="lobby-actions" style={{ gap: 10 }}>
-              {/* JOIN button (tx) */}
-              {account && phase === 0 && !isJoined && (
-                <button className="btn outline" onClick={handleJoinGame}>
-                  JOIN GAME
+            <div className="lobby-actions" style={{ marginTop: 16 }}>
+              {!isHost && (
+                <button
+                  className="btn primary"
+                  onClick={handleJoinGame}
+                  disabled={!account || joinedMe || busyJoin}
+                  title={
+                    !account
+                      ? "Connect wallet first"
+                      : joinedMe
+                      ? "Already joined"
+                      : needsApproval
+                      ? "Will ask to approve DCT first"
+                      : "Join and pay bet"
+                  }
+                >
+                  {busyJoin
+                    ? "PLEASE WAIT…"
+                    : joinedMe
+                    ? "JOINED ✓"
+                    : needsApproval
+                    ? "APPROVE + JOIN"
+                    : "JOIN GAME"}
                 </button>
               )}
 
-              {/* START button */}
               {isHost && (
-                <>
-                  <button className="btn primary" onClick={handleStartGame}>
-                    START GAME
-                  </button>
-                  <div className="lobby-note" style={{ marginTop: 6 }}>
-                    Solo start is enabled for UI testing.
-                  </div>
-                </>
-              )}
-
-              {!isHost && account && isJoined && (
-                <div className="lobby-note">Waiting for host to start…</div>
+                <button
+                  className="btn primary"
+                  onClick={handleStartGame}
+                  disabled={!account || busyStart || filledCount < 2}
+                  title={filledCount < 2 ? "Need 2+ players (contract rule)" : "Start game on-chain"}
+                >
+                  {busyStart ? "STARTING…" : "START GAME"}
+                </button>
               )}
             </div>
 
