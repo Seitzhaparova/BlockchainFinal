@@ -308,3 +308,118 @@ export function getResultsForRoom(roomId) {
     return null;
   }
 }
+// Добавить в конец outfitStorage.js
+
+// ======================
+// ТОКЕННЫЕ ФУНКЦИИ
+// ======================
+
+const TOKEN_BALANCE_KEY = "dresschain_token_balance";
+const ENTRY_FEE_AMOUNT = 10; // Ставка для входа в игру (токенов)
+const TOKEN_REWARD_RATES = {
+  1: 30, // Победитель: +30 токенов
+  2: 15, // 2 место: +15 токенов
+  3: 5   // 3 место: +5 токенов
+};
+
+// Проверить баланс
+export function getTokenBalance(address) {
+  if (!address) return 0;
+  try {
+    const stored = localStorage.getItem(TOKEN_BALANCE_KEY);
+    if (stored) {
+      const balances = JSON.parse(stored);
+      return balances[address.toLowerCase()] || 0;
+    }
+  } catch (e) {
+    console.error("Error loading token balance:", e);
+  }
+  return 0;
+}
+
+// Обновить баланс
+export function updateTokenBalance(address, amount) {
+  if (!address) return false;
+  try {
+    const stored = localStorage.getItem(TOKEN_BALANCE_KEY);
+    const balances = stored ? JSON.parse(stored) : {};
+    const currentBalance = balances[address.toLowerCase()] || 0;
+    const newBalance = Math.max(0, currentBalance + amount);
+    
+    balances[address.toLowerCase()] = newBalance;
+    localStorage.setItem(TOKEN_BALANCE_KEY, JSON.stringify(balances));
+    return true;
+  } catch (e) {
+    console.error("Error updating token balance:", e);
+    return false;
+  }
+}
+
+// Проверить и списать ставку
+export function deductEntryFee(roomId, playerAddress, hasBots) {
+  // Если в комнате есть боты - бесплатно
+  if (hasBots) return true;
+  
+  const fee = ENTRY_FEE_AMOUNT;
+  const currentBalance = getTokenBalance(playerAddress);
+  
+  if (currentBalance < fee) {
+    console.error("Insufficient token balance");
+    return false;
+  }
+  
+  // Сохраняем информацию о ставке
+  const betKey = `dc_bet_${roomId}_${playerAddress}`;
+  localStorage.setItem(betKey, JSON.stringify({
+    amount: fee,
+    paidAt: Date.now(),
+    playerAddress
+  }));
+  
+  // Списать токены
+  return updateTokenBalance(playerAddress, -fee);
+}
+
+// Распределить призовые токены
+export function distributeRewards(roomId, winners) {
+  const results = [];
+  
+  winners.forEach(winner => {
+    const reward = TOKEN_REWARD_RATES[winner.rank] || 0;
+    if (reward > 0) {
+      const success = updateTokenBalance(winner.address, reward);
+      results.push({
+        address: winner.address,
+        rank: winner.rank,
+        reward: reward,
+        success: success
+      });
+    }
+  });
+  
+  // Возвращаем ставки всем игрокам (кроме ботов)
+  const allBetsKey = `dc_all_bets_${roomId}`;
+  const allBets = JSON.parse(localStorage.getItem(allBetsKey) || '{}');
+  
+  Object.entries(allBets).forEach(([player, betAmount]) => {
+    if (!player.startsWith('0xBot')) {
+      updateTokenBalance(player, betAmount);
+    }
+  });
+  
+  return results;
+}
+
+// Сохранить информацию о ставках в комнате
+export function saveBetInfo(roomId, playerAddress, amount) {
+  const allBetsKey = `dc_all_bets_${roomId}`;
+  const allBets = JSON.parse(localStorage.getItem(allBetsKey) || '{}');
+  allBets[playerAddress] = amount;
+  localStorage.setItem(allBetsKey, JSON.stringify(allBets));
+}
+
+// Получить информацию о ставках в комнате
+export function getBetInfo(roomId) {
+  const allBetsKey = `dc_all_bets_${roomId}`;
+  return JSON.parse(localStorage.getItem(allBetsKey) || '{}');
+}

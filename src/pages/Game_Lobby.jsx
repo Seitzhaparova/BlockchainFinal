@@ -1,7 +1,12 @@
-// src/pages/Game_Lobby.jsx
+// src/pages/Game_Lobby.jsx - ОБНОВЛЕННАЯ ВЕРСИЯ
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "../main_page.css";
+import {
+  getTokenBalance,
+  deductEntryFee,
+  saveBetInfo,
+} from "../utils/outfitStorage";
 
 function shortenAddress(address) {
   if (!address) return "";
@@ -102,6 +107,7 @@ function buildPlayers(hostAddr, maxPlayers) {
       chatText: "",
       chatUntil: 0,
       playerName: "",
+      isBot: false,
     },
   ];
   while (arr.length < mp) {
@@ -111,6 +117,7 @@ function buildPlayers(hostAddr, maxPlayers) {
       chatText: "",
       chatUntil: 0,
       playerName: "",
+      isBot: false,
     });
   }
   return arr.slice(0, mp);
@@ -128,6 +135,62 @@ function getRandomBody() {
   return bodies[Math.floor(Math.random() * bodies.length)];
 }
 
+// Список имен для ботов
+const BOT_NAMES = [
+  "FashionBot_1",
+  "GlitterAI",
+  "RetroVibe",
+  "StyleMaster",
+  "TrendSetter",
+  "ChicBot",
+  "VogueAI",
+  "RunwayPro",
+  "CoutureBot",
+  "GlamourAI",
+];
+
+// Список адресов для ботов
+const BOT_ADDRESSES = [
+  "0xBot1A1B2C3D4E5F6",
+  "0xBot2G7H8I9J0K1L2",
+  "0xBot3M3N4O5P6Q7R8",
+  "0xBot4S9T0U1V2W3X4",
+  "0xBot5Y5Z6A7B8C9D0",
+  "0xBot6E1F2G3H4I5J6",
+  "0xBot7K7L8M9N0O1P2",
+  "0xBot8Q2R3S4T5U6V7",
+  "0xBot9W8X9Y0Z1A2B3",
+  "0xBot10C3D4E5F6G7H8",
+];
+
+// Генерируем ботов
+function generateBots(count) {
+  const bots = [];
+  const usedIndices = new Set();
+
+  for (let i = 0; i < count; i++) {
+    let index;
+    do {
+      index = Math.floor(Math.random() * BOT_NAMES.length);
+    } while (usedIndices.has(index));
+
+    usedIndices.add(index);
+
+    bots.push({
+      address: BOT_ADDRESSES[index],
+      name: BOT_NAMES[index],
+      role: "BOT",
+      chatText: "",
+      chatUntil: 0,
+      playerName: BOT_NAMES[index],
+      isBot: true,
+      body: getRandomBody(),
+    });
+  }
+
+  return bots;
+}
+
 export default function GameLobby() {
   const navigate = useNavigate();
   const { roomId } = useParams();
@@ -142,6 +205,7 @@ export default function GameLobby() {
   const [maxPlayers, setMaxPlayers] = useState(4);
   const [topic, setTopic] = useState("—");
   const [players, setPlayers] = useState(() => buildPlayers("HOST", 4));
+  const [hasBots, setHasBots] = useState(false);
 
   const [status, setStatus] = useState("");
 
@@ -159,10 +223,40 @@ export default function GameLobby() {
         const t = meta?.topic || getRandomTopic();
         const host = meta?.host || "HOST";
         const mp = Number(meta?.maxPlayers) || 4;
+        const bots = meta?.hasBots || false;
 
         setTopic(t);
         setMaxPlayers(mp);
-        setPlayers(buildPlayers(host, mp));
+        setHasBots(bots);
+
+        if (bots) {
+          // Если в комнате уже есть боты, восстанавливаем их
+          const playersWithBots = buildPlayers(host, mp);
+          playersWithBots[0] = {
+            ...playersWithBots[0],
+            address: host,
+            role: "HOST",
+            playerName: loadPlayerName(host),
+          };
+
+          // Заполняем пустые слоты ботами
+          const emptySlots = playersWithBots.filter((p) => !p.address);
+          if (emptySlots.length > 0) {
+            const bots = generateBots(emptySlots.length);
+            let botIndex = 0;
+
+            for (let i = 0; i < playersWithBots.length; i++) {
+              if (!playersWithBots[i].address && bots[botIndex]) {
+                playersWithBots[i] = bots[botIndex];
+                botIndex++;
+              }
+            }
+          }
+
+          setPlayers(playersWithBots);
+        } else {
+          setPlayers(buildPlayers(host, mp));
+        }
       } catch {
         setTopic(getRandomTopic());
         setMaxPlayers(4);
@@ -299,6 +393,7 @@ export default function GameLobby() {
               host: account,
               topic: meta.topic || topic || getRandomTopic(),
               maxPlayers: meta.maxPlayers || maxPlayers || 4,
+              hasBots: hasBots,
               createdAt: meta.createdAt || Date.now(),
             })
           );
@@ -307,14 +402,15 @@ export default function GameLobby() {
         return next;
       }
 
-      // else: take first empty slot
-      const idx = next.findIndex((p) => !p.address);
+      // else: take first empty slot that is not a bot
+      const idx = next.findIndex((p) => !p.address && !p.isBot);
       if (idx !== -1) {
         next[idx] = {
           ...next[idx],
           address: account,
           role: "PLAYER",
           playerName: name,
+          isBot: false,
         };
         return next;
       }
@@ -322,7 +418,7 @@ export default function GameLobby() {
       setStatus("Комната заполнена.");
       return prev;
     });
-  }, [account, roomId, topic, maxPlayers, playerName]);
+  }, [account, roomId, topic, maxPlayers, playerName, hasBots]);
 
   // chat TTL cleanup
   useEffect(() => {
@@ -370,7 +466,7 @@ export default function GameLobby() {
   // Функция для получения зафиксированного тела игрока
   const getPlayerBody = useMemo(() => {
     const bodies = Object.values(BODY_MAP);
-    return (playerAddress, playerIndex) => {
+    return (playerAddress, playerIndex, isBot = false) => {
       const key = playerAddress || `placeholder_${playerIndex}`;
 
       // Если тело уже сохранено - возвращаем его
@@ -384,6 +480,63 @@ export default function GameLobby() {
       return randomBody;
     };
   }, []);
+
+  // Функция для игры с ботами
+  function handlePlayWithBots() {
+    if (!account) {
+      setStatus("Сначала подключи кошелек.");
+      return;
+    }
+
+    if (!isHost) {
+      setStatus("Только host может добавить ботов.");
+      return;
+    }
+
+    setStatus("Добавляем ботов в комнату...");
+
+    // Обновляем состояние комнаты
+    try {
+      const key = `dc_room_${roomId}`;
+      const raw = localStorage.getItem(key);
+      const meta = raw ? JSON.parse(raw) : {};
+      localStorage.setItem(
+        key,
+        JSON.stringify({
+          ...meta,
+          hasBots: true,
+          isBotGame: true,
+        })
+      );
+    } catch (e) {
+      console.error("Error saving bot game flag:", e);
+    }
+
+    // Добавляем ботов в пустые слоты
+    setPlayers((prev) => {
+      const next = [...prev];
+      const emptySlots = next.filter((p) => !p.address);
+
+      if (emptySlots.length === 0) {
+        setStatus("Нет пустых слотов для ботов.");
+        return prev;
+      }
+
+      const bots = generateBots(emptySlots.length);
+      let botIndex = 0;
+
+      for (let i = 0; i < next.length; i++) {
+        if (!next[i].address && bots[botIndex]) {
+          next[i] = bots[botIndex];
+          botIndex++;
+        }
+      }
+
+      setHasBots(true);
+      setStatus(`Добавлено ${bots.length} ботов! Теперь можно начать игру.`);
+      return next;
+    });
+  }
 
   async function handleBuyTokens() {
     if (!account) return;
@@ -464,12 +617,12 @@ export default function GameLobby() {
 
   function handleStartGame() {
     if (!roomId) return setStatus("Room ID отсутствует.");
-    if (!account) return; // should not happen because redirect
+    if (!account) return;
     if (!isHost) return setStatus("Стартовать игру может только host.");
 
     // Проверяем, есть ли у всех игроков имена
     const playersWithoutNames = players.filter(
-      (p) => p.address && p.address !== "HOST" && !p.playerName
+      (p) => p.address && p.address !== "HOST" && !p.isBot && !p.playerName
     );
 
     if (playersWithoutNames.length > 0) {
@@ -477,19 +630,56 @@ export default function GameLobby() {
       return;
     }
 
-    // ✅ Only block if dev mode is OFF
-    if (!DEV_ALLOW_SOLO_START && filledCount < 2) {
+    // Если игра с реальными людьми (без ботов) - проверяем баланс
+    if (!hasBots) {
+      const realPlayers = players.filter((p) => p.address && !p.isBot);
+
+      // Проверяем баланс всех реальных игроков
+      const playersWithInsufficientBalance = realPlayers.filter((p) => {
+        const balance = getTokenBalance(p.address);
+        return balance < ENTRY_FEE_AMOUNT;
+      });
+
+      if (playersWithInsufficientBalance.length > 0) {
+        const playersList = playersWithInsufficientBalance
+          .map((p) => p.playerName || shortenAddress(p.address))
+          .join(", ");
+        setStatus(
+          `Недостаточно токенов у игроков: ${playersList}. Нужно минимум ${ENTRY_FEE_AMOUNT} токенов.`
+        );
+        return;
+      }
+
+      // Списание ставок для всех реальных игроков
+      let allDeducted = true;
+      realPlayers.forEach((player) => {
+        const deducted = deductEntryFee(roomId, player.address, hasBots);
+        if (!deducted) allDeducted = false;
+        if (deducted) {
+          saveBetInfo(roomId, player.address, ENTRY_FEE_AMOUNT);
+        }
+      });
+
+      if (!allDeducted) {
+        setStatus("Ошибка при списании токенов. Проверьте баланс.");
+        return;
+      }
+    }
+
+    // ✅ Only block if dev mode is OFF and no bots
+    if (!hasBots && !DEV_ALLOW_SOLO_START && filledCount < 2) {
       return setStatus("Нужно минимум 2 игрока, чтобы начать.");
     }
 
-    // Сохраняем информацию об игроках для передачи в активную игру
+    // Сохраняем информацию об игроках
     try {
       const key = `dc_room_players_${roomId}`;
       const playersInfo = players
         .filter((p) => p.address && p.address !== "HOST")
         .map((p) => ({
           address: p.address,
-          name: p.playerName || shortenAddress(p.address),
+          name: p.playerName || (p.isBot ? p.name : shortenAddress(p.address)),
+          isBot: p.isBot || false,
         }));
 
       localStorage.setItem(key, JSON.stringify(playersInfo));
@@ -500,7 +690,6 @@ export default function GameLobby() {
     // ✅ Link Lobby -> Active
     navigate(`/active/${roomId}`);
   }
-
   function handleCopyRoomId() {
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(roomId || "");
@@ -524,6 +713,7 @@ export default function GameLobby() {
   // Получаем отображаемое имя для игрока
   const getDisplayName = (player) => {
     if (!player.address) return "";
+    if (player.isBot) return player.name;
     if (player.playerName) return player.playerName;
     return shortenAddress(player.address);
   };
@@ -716,7 +906,14 @@ export default function GameLobby() {
                   p.address.toLowerCase() === account.toLowerCase();
 
                 const badge =
-                  idx === 0 && filled ? "HOST" : filled ? "PLAYER" : "EMPTY";
+                  idx === 0 && filled
+                    ? "HOST"
+                    : p.isBot
+                    ? "BOT"
+                    : filled
+                    ? "PLAYER"
+                    : "EMPTY";
+
                 const displayName = getDisplayName(p);
                 const text =
                   p.address === "HOST"
@@ -731,7 +928,9 @@ export default function GameLobby() {
                 return (
                   <div
                     key={idx}
-                    className={`avatar-card ${filled ? "filled" : ""}`}
+                    className={`avatar-card ${filled ? "filled" : ""} ${
+                      p.isBot ? "bot" : ""
+                    }`}
                   >
                     {showChat && (
                       <div
@@ -743,16 +942,37 @@ export default function GameLobby() {
                     )}
 
                     {filled ? (
-                      <img
-                        src={getPlayerBody(p.address, idx)}
-                        alt={`player ${idx + 1}`}
-                        style={{
-                          width: "80px",
-                          height: "140px",
-                          objectFit: "contain",
-                          display: "block",
-                        }}
-                      />
+                      <>
+                        {p.isBot && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: "8px",
+                              right: "8px",
+                              background: "#240C3A",
+                              color: "white",
+                              fontSize: "10px",
+                              padding: "2px 6px",
+                              borderRadius: "10px",
+                              fontWeight: "bold",
+                              zIndex: 2,
+                            }}
+                          >
+                            🤖 BOT
+                          </div>
+                        )}
+                        <img
+                          src={p.body || getPlayerBody(p.address, idx, p.isBot)}
+                          alt={`player ${idx + 1}`}
+                          style={{
+                            width: "80px",
+                            height: "140px",
+                            objectFit: "contain",
+                            display: "block",
+                            filter: p.isBot ? "sepia(0.3)" : "none",
+                          }}
+                        />
+                      </>
                     ) : (
                       <div className="avatar-placeholder" />
                     )}
@@ -766,7 +986,11 @@ export default function GameLobby() {
                         className="bubble-text"
                         style={{
                           fontWeight: p.playerName ? "bold" : "normal",
-                          color: p.playerName ? "#240C3A" : "#666",
+                          color: p.isBot
+                            ? "#8B4513"
+                            : p.playerName
+                            ? "#240C3A"
+                            : "#666",
                         }}
                       >
                         {text}
@@ -789,22 +1013,37 @@ export default function GameLobby() {
             </div>
 
             <div className="lobby-actions">
-              <button
-                className={`btn ${isHost ? "primary" : "outline"}`}
-                onClick={handleStartGame}
-                disabled={!isHost || (!DEV_ALLOW_SOLO_START && filledCount < 2)}
-                title={
-                  !isHost
-                    ? "Только host может начать"
-                    : !DEV_ALLOW_SOLO_START && filledCount < 2
-                    ? "Нужно минимум 2 игрока"
-                    : DEV_ALLOW_SOLO_START
-                    ? "DEV: можно стартовать одному"
-                    : ""
-                }
-              >
-                START GAME
-              </button>
+              {isHost && (
+                <>
+                  <button
+                    className={`btn ${
+                      isHost && hasBots ? "primary" : "outline"
+                    }`}
+                    onClick={handleStartGame}
+                    disabled={!isHost}
+                    title={
+                      !hasBots && filledCount < 2
+                        ? "Нужно минимум 2 игрока или добавьте ботов"
+                        : ""
+                    }
+                  >
+                    START GAME
+                  </button>
+
+                  <button
+                    className="btn outline"
+                    onClick={handlePlayWithBots}
+                    disabled={hasBots}
+                    title={
+                      hasBots
+                        ? "Боты уже добавлены"
+                        : "Добавить ботов в пустые слоты"
+                    }
+                  >
+                    {hasBots ? "Боты добавлены ✓" : "🎮 Играть с ботами"}
+                  </button>
+                </>
+              )}
 
               {account && !isHost && (
                 <div className="lobby-note">
@@ -812,15 +1051,37 @@ export default function GameLobby() {
                 </div>
               )}
 
-              {filledCount < 2 && account && (
+              {!hasBots && filledCount < 2 && account && (
                 <div className="lobby-note" style={{ color: "#ff6b6b" }}>
                   Ожидание игроков... Нужно минимум 2 игрока для старта
+                  <br />
+                  Или host может добавить ботов кнопкой выше
+                </div>
+              )}
+
+              {/* Индикатор режима */}
+              {hasBots && (
+                <div
+                  className="lobby-note"
+                  style={{
+                    color: "#8B4513",
+                    background: "rgba(139, 69, 19, 0.1)",
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    marginTop: "10px",
+                  }}
+                >
+                  <strong>🎮 Режим игры с ботами</strong>
+                  <div style={{ fontSize: "11px", marginTop: "4px" }}>
+                    Боты будут автоматически сгенерированы с случайными образами
+                  </div>
                 </div>
               )}
 
               {/* Подсказка про имена */}
               {players.some(
-                (p) => p.address && p.address !== "HOST" && !p.playerName
+                (p) =>
+                  p.address && p.address !== "HOST" && !p.isBot && !p.playerName
               ) && (
                 <div className="lobby-note" style={{ color: "#ff9b23" }}>
                   ⚠️ Некоторые игроки не установили имена. Нажмите на свой адрес

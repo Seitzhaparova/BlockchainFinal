@@ -1036,3 +1036,92 @@ body,
     grid-template-columns: 1fr;
   }
 }
+
+/* Добавьте в конец файла main_page.css */
+
+/* Стили для ботов */
+.avatar-card.bot .bubble {
+  background: rgba(139, 69, 19, 0.1);
+  border-color: rgba(139, 69, 19, 0.2);
+}
+
+.avatar-card.bot .bubble-title {
+  color: #8B4513;
+}
+
+.avatar-card.bot .avatar-placeholder {
+  background: rgba(139, 69, 19, 0.15);
+}
+
+/* Кнопка добавления ботов */
+.bot-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 2px solid #8B4513;
+  background: rgba(139, 69, 19, 0.1);
+  color: #8B4513;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.bot-button:hover {
+  background: rgba(139, 69, 19, 0.2);
+  transform: translateY(-1px);
+}
+
+.bot-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Индикатор режима ботов */
+.bot-mode-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(139, 69, 19, 0.1));
+  border: 1px solid rgba(139, 69, 19, 0.3);
+  margin-top: 10px;
+}
+
+.bot-mode-indicator .icon {
+  font-size: 16px;
+}
+
+.bot-mode-indicator .text {
+  font-size: 12px;
+  color: #8B4513;
+  font-weight: bold;
+}
+
+/* Добавьте в конец main_page.css */
+
+.side-silhouette {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 0;
+  height: 100%;
+}
+
+/* Убедитесь, что контейнер позволяет элементам быть по центру */
+.start-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Улучшаем отображение картинки девушки */
+.side-silhouette img {
+  max-width: 100%;
+  height: auto;
+}

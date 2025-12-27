@@ -12,7 +12,13 @@ function shortenAddress(address) {
 const TOKENS_PER_ETH = 100;
 
 // Topics (same as lobby)
-const GAME_TOPICS = ["NEON GLAM", "CYBER FAIRY", "FUTURISTIC RUNWAY", "Y2K ICON", "DARK ELEGANCE"];
+const GAME_TOPICS = [
+  "NEON GLAM",
+  "CYBER FAIRY",
+  "FUTURISTIC RUNWAY",
+  "Y2K ICON",
+  "DARK ELEGANCE",
+];
 function getRandomTopic() {
   return GAME_TOPICS[Math.floor(Math.random() * GAME_TOPICS.length)];
 }
@@ -119,15 +125,15 @@ export default function StartPage() {
         if (!mounted) return;
         setAccount(acc);
         setChainId(cid);
-        
+
         if (acc) {
           // Загружаем баланс и имя
           const balance = loadTokenBalance(acc);
           setTokenBalance(balance);
-          
+
           const name = loadPlayerName(acc);
           setPlayerName(name);
-          
+
           // Если имя не установлено - показываем модалку
           if (!name) {
             setShowNameModal(true);
@@ -144,15 +150,15 @@ export default function StartPage() {
       const acc = accs?.[0] ?? null;
       setAccount(acc);
       setStatus(acc ? "Аккаунт изменён." : "Кошелёк отключён.");
-      
+
       if (acc) {
         // Загружаем баланс и имя для нового аккаунта
         const balance = loadTokenBalance(acc);
         setTokenBalance(balance);
-        
+
         const name = loadPlayerName(acc);
         setPlayerName(name);
-        
+
         if (!name) {
           setShowNameModal(true);
         }
@@ -189,15 +195,15 @@ export default function StartPage() {
 
       setAccount(acc);
       setChainId(cid);
-      
+
       if (acc) {
         // Загружаем баланс и имя
         const balance = loadTokenBalance(acc);
         setTokenBalance(balance);
-        
+
         const name = loadPlayerName(acc);
         setPlayerName(name);
-        
+
         // Показываем модалку для установки имени, если его нет
         if (!name) {
           setShowNameModal(true);
@@ -209,7 +215,8 @@ export default function StartPage() {
     } catch (err) {
       console.error(err);
       if (err?.code === 4001) setStatus("Подключение отменено пользователем.");
-      else if (err?.code === -32002) setStatus("Окно MetaMask уже открыто (запрос ожидает).");
+      else if (err?.code === -32002)
+        setStatus("Окно MetaMask уже открыто (запрос ожидает).");
       else setStatus("Ошибка подключения кошелька.");
       return null;
     } finally {
@@ -217,20 +224,72 @@ export default function StartPage() {
     }
   }
 
+  async function switchAccount() {
+    const eth = getEthereum();
+    if (!eth) {
+      setStatus("MetaMask не найден.");
+      return;
+    }
+
+    try {
+      setIsConnecting(true);
+      setStatus("");
+
+      // Запрашиваем разрешение на смену аккаунта
+      await eth.request({
+        method: "wallet_requestPermissions",
+        params: [{ eth_accounts: {} }],
+      });
+
+      // После разрешения запрашиваем аккаунты
+      const accounts = await eth.request({ method: "eth_requestAccounts" });
+
+      if (accounts && accounts.length > 1) {
+        // Показываем пользователю диалог выбора аккаунта
+        const selectedAccount = accounts[0]; // В реальности пользователь выберет в MetaMask
+        setAccount(selectedAccount);
+
+        // Загружаем данные для нового аккаунта
+        const balance = loadTokenBalance(selectedAccount);
+        setTokenBalance(balance);
+
+        const name = loadPlayerName(selectedAccount);
+        setPlayerName(name);
+
+        if (!name) {
+          setShowNameModal(true);
+        }
+
+        setStatus("Аккаунт успешно изменён.");
+      } else {
+        setStatus("Только один аккаунт доступен.");
+      }
+    } catch (error) {
+      if (error.code === 4001) {
+        setStatus("Смена аккаунта отменена.");
+      } else {
+        setStatus("Ошибка при смене аккаунта.");
+        console.error(error);
+      }
+    } finally {
+      setIsConnecting(false);
+    }
+  }
+
   function handleSaveName() {
     if (!account) return;
-    
+
     const trimmedName = playerName.trim();
     if (trimmedName.length === 0) {
       setStatus("Имя не может быть пустым.");
       return;
     }
-    
+
     if (trimmedName.length > 20) {
       setStatus("Имя не может быть длиннее 20 символов.");
       return;
     }
-    
+
     // Сохраняем имя
     savePlayerName(account, trimmedName);
     setPlayerName(trimmedName);
@@ -291,7 +350,7 @@ export default function StartPage() {
 
     const bought = eth * TOKENS_PER_ETH;
     const newBalance = tokenBalance + bought;
-    
+
     // Сохраняем баланс
     saveTokenBalance(acc, newBalance);
     setTokenBalance(newBalance);
@@ -308,40 +367,49 @@ export default function StartPage() {
 
       {/* Модалка для установки имени */}
       {showNameModal && account && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "rgba(0, 0, 0, 0.7)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-        }}>
-          <div style={{
-            background: "white",
-            borderRadius: "20px",
-            padding: "30px",
-            maxWidth: "400px",
-            width: "90%",
-            boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
-          }}>
-            <h3 style={{ 
-              margin: "0 0 15px 0", 
-              color: "#240C3A",
-              textAlign: "center"
-            }}>
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.7)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              background: "white",
+              borderRadius: "20px",
+              padding: "30px",
+              maxWidth: "400px",
+              width: "90%",
+              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+            }}
+          >
+            <h3
+              style={{
+                margin: "0 0 15px 0",
+                color: "#240C3A",
+                textAlign: "center",
+              }}
+            >
               Добро пожаловать в DressChain! 👗
             </h3>
-            <p style={{ 
-              color: "#666", 
-              marginBottom: "20px",
-              textAlign: "center",
-              fontSize: "14px"
-            }}>
-              Сначала установите игровое имя, которое будут видеть другие участники
+            <p
+              style={{
+                color: "#666",
+                marginBottom: "20px",
+                textAlign: "center",
+                fontSize: "14px",
+              }}
+            >
+              Сначала установите игровое имя, которое будут видеть другие
+              участники
             </p>
             <div style={{ marginBottom: "20px" }}>
               <input
@@ -362,12 +430,14 @@ export default function StartPage() {
                   if (e.key === "Enter") handleSaveName();
                 }}
               />
-              <div style={{
-                fontSize: "12px",
-                color: "#999",
-                marginTop: "5px",
-                textAlign: "center"
-              }}>
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "#999",
+                  marginTop: "5px",
+                  textAlign: "center",
+                }}
+              >
                 Можно использовать до 20 символов
               </div>
             </div>
@@ -408,12 +478,45 @@ export default function StartPage() {
           <span className="wallet-sep" />
 
           {connected ? (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-              <div style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.8)" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                gap: "2px",
+              }}
+            >
+              <div
+                style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.9)" }}
+              >
                 {playerName ? playerName : "Без имени"}
               </div>
-              <div style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.6)" }}>
-                {shortenAddress(account)}
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "rgba(255, 255, 255, 0.7)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <span>{shortenAddress(account)}</span>
+                <button
+                  onClick={switchAccount}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid rgba(255, 255, 255, 0.3)",
+                    color: "rgba(255, 255, 255, 0.7)",
+                    borderRadius: "4px",
+                    padding: "2px 6px",
+                    fontSize: "9px",
+                    cursor: "pointer",
+                    marginLeft: "4px",
+                  }}
+                  title="Сменить аккаунт"
+                >
+                  ↻
+                </button>
               </div>
             </div>
           ) : (
@@ -426,12 +529,21 @@ export default function StartPage() {
         <div className="start-card">
           <h1 className="start-title">Step on the Chain Runway</h1>
           <p className="start-subtitle">
-            Создай комнату, одень образ по теме и соревнуйся за модную славу и игровой банк токенов.
+            Создай комнату, одень образ по теме и соревнуйся за модную славу и
+            игровой банк токенов.
           </p>
 
           <div className="start-actions">
-            <button className="btn primary" onClick={connectWallet} disabled={isConnecting}>
-              {connected ? "Кошелек подключен" : isConnecting ? "Подключение..." : "Подключить кошелек"}
+            <button
+              className="btn primary"
+              onClick={connectWallet}
+              disabled={isConnecting}
+            >
+              {connected
+                ? "Кошелек подключен"
+                : isConnecting
+                ? "Подключение..."
+                : "Подключить кошелек"}
             </button>
 
             {connected && (
@@ -450,11 +562,16 @@ export default function StartPage() {
                       onChange={(e) => setEthInput(e.target.value)}
                       className="buy-input"
                     />
-                    <button className="btn small buy-btn" onClick={handleBuyTokens}>
+                    <button
+                      className="btn small buy-btn"
+                      onClick={handleBuyTokens}
+                    >
                       Купить
                     </button>
                   </div>
-                  <div className="buy-hint">1 ETH = 100 токенов. Баланс: {prettyTokens} токенов</div>
+                  <div className="buy-hint">
+                    1 ETH = 100 токенов. Баланс: {prettyTokens} токенов
+                  </div>
                 </div>
 
                 <div className="join-section">
@@ -472,11 +589,11 @@ export default function StartPage() {
                     </button>
                   </div>
                 </div>
-                
+
                 {/* Кнопка смены имени */}
                 {playerName && (
-                  <button 
-                    className="btn small outline" 
+                  <button
+                    className="btn small outline"
                     onClick={() => setShowNameModal(true)}
                     style={{ marginTop: "10px" }}
                   >
@@ -492,7 +609,109 @@ export default function StartPage() {
 
         <div className="start-side">
           <div className="side-silhouette">
-            <div className="silhouette-inner">Runway ready</div>
+            {/* Speech bubble - теперь ПЕРЕД картинкой */}
+            <div
+              style={{
+                position: "relative",
+                background: "rgba(255, 255, 255, 0.95)",
+                borderRadius: "16px",
+                padding: "16px 20px",
+                maxWidth: "280px",
+                margin: "0 auto 25px",
+                border: "2px solid rgba(255, 77, 166, 0.3)",
+                boxShadow: "0 10px 30px rgba(0, 0, 0, 0.2)",
+                color: "#240C3A",
+                fontSize: "14px",
+                lineHeight: "1.4",
+                textAlign: "center",
+                zIndex: 2,
+              }}
+            >
+              {!connected ? (
+                <>
+                  <div
+                    style={{
+                      fontWeight: "bold",
+                      marginBottom: "8px",
+                      color: "#ff4da6",
+                    }}
+                  >
+                    👋 Привет, модник!
+                  </div>
+                  <div>
+                    Чтобы начать игру, подключи свой криптокошелек MetaMask!
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      fontWeight: "bold",
+                      marginBottom: "8px",
+                      color: "#ff4da6",
+                    }}
+                  >
+                    🎉 Отлично, {playerName || "модник"}!
+                  </div>
+                  <div>
+                    Ты готов к показу на блокчейн-подиуме? Создай игру или
+                    присоединяйся к существующей!
+                  </div>
+                </>
+              )}
+
+              {/* Bubble tail - теперь указывает ВНИЗ к девушке */}
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "-12px",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  width: "0",
+                  height: "0",
+                  borderLeft: "12px solid transparent",
+                  borderRight: "12px solid transparent",
+                  borderTop: "12px solid rgba(255, 255, 255, 0.95)",
+                }}
+              />
+            </div>
+
+            {/* Картинка девушки - теперь уменьшенная и по центру */}
+            <div
+              style={{
+                position: "relative",
+                width: "220px",
+                height: "350px",
+                margin: "0 auto",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <img
+                src="src/assets/characters/girl1.png"
+                alt="Fashion Assistant"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  filter: "drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3))",
+                }}
+              />
+            </div>
+
+            {/* Small decorative text - внизу */}
+            <div
+              className="silhouette-inner"
+              style={{ 
+                marginTop: "20px", 
+                opacity: "0.7",
+                fontSize: "12px",
+                textAlign: "center"
+              }}
+            >
+              Runway ready
+            </div>
           </div>
         </div>
       </main>
