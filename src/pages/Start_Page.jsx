@@ -1,8 +1,9 @@
+// src/pages/Start_Page.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../main_page.css";
 
-import { Contract, formatUnits, parseEther, parseUnits, isAddress } from "ethers";
+import { formatUnits, parseEther, parseUnits, isAddress } from "ethers";
 import { connectWallet, getProvider, getSigner } from "../web3/eth";
 import { TOPICS } from "../web3/topics";
 import { assertAddresses, getAddresses, getFactory, getToken, getTokenSale } from "../web3/contracts";
@@ -10,10 +11,6 @@ import { assertAddresses, getAddresses, getFactory, getToken, getTokenSale } fro
 function shortenAddress(address) {
   if (!address) return "";
   return address.slice(0, 6) + "..." + address.slice(-4);
-}
-
-function randomTopicId() {
-  return Math.floor(Math.random() * TOPICS.length);
 }
 
 export default function Start_Page() {
@@ -32,7 +29,12 @@ export default function Start_Page() {
   const [betTokens, setBetTokens] = useState("10");
   const [maxPlayers, setMaxPlayers] = useState("4");
 
+  const [topicMode, setTopicMode] = useState("random"); // "random" | "fixed"
+  const [topicFixed, setTopicFixed] = useState("0");
+
   const [joinRoomInput, setJoinRoomInput] = useState("");
+
+  const [recentRooms, setRecentRooms] = useState([]);
 
   const { token: TOKEN_ADDR, sale: SALE_ADDR, factory: FACTORY_ADDR } = getAddresses();
   const hasConfig = useMemo(() => {
@@ -43,6 +45,26 @@ export default function Start_Page() {
       return false;
     }
   }, [TOKEN_ADDR, SALE_ADDR, FACTORY_ADDR]);
+
+  function loadRecents() {
+    try {
+      const raw = localStorage.getItem("dc_recent_rooms");
+      const arr = raw ? JSON.parse(raw) : [];
+      setRecentRooms(Array.isArray(arr) ? arr : []);
+    } catch {
+      setRecentRooms([]);
+    }
+  }
+
+  function pushRecent(roomAddr) {
+    try {
+      const raw = localStorage.getItem("dc_recent_rooms");
+      const arr = raw ? JSON.parse(raw) : [];
+      const next = [roomAddr, ...arr.filter((x) => x !== roomAddr)].slice(0, 8);
+      localStorage.setItem("dc_recent_rooms", JSON.stringify(next));
+      setRecentRooms(next);
+    } catch {}
+  }
 
   async function refresh() {
     if (!hasConfig || !account) return;
@@ -69,6 +91,7 @@ export default function Start_Page() {
   }
 
   useEffect(() => {
+    loadRecents();
     (async () => {
       try {
         const provider = await getProvider().catch(() => null);
@@ -77,6 +100,7 @@ export default function Start_Page() {
         if (accounts?.[0]) setAccount(accounts[0]);
       } catch {}
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -127,7 +151,11 @@ export default function Start_Page() {
     if (!account) return setStatus("Connect wallet first.");
 
     const mp = Math.max(2, Math.min(10, Number(maxPlayers) || 4));
-    const topicId = randomTopicId();
+
+    const topicId =
+      topicMode === "fixed"
+        ? Math.max(0, Math.min(TOPICS.length - 1, Number(topicFixed) || 0))
+        : Math.floor(Math.random() * TOPICS.length);
 
     try {
       setStatus("Creating game... confirm MetaMask");
@@ -154,16 +182,7 @@ export default function Start_Page() {
         return;
       }
 
-      // Save UI hint locally (optional)
-      localStorage.setItem(
-        `dc_room_${roomAddr}`,
-        JSON.stringify({
-          roomId: roomAddr,
-          topicId,
-          createdAt: Date.now(),
-        })
-      );
-
+      pushRecent(roomAddr);
       setStatus("Game created ✅");
       navigate(`/lobby/${roomAddr}`);
     } catch (e) {
@@ -175,11 +194,15 @@ export default function Start_Page() {
   function joinGame() {
     const id = joinRoomInput.trim();
     if (!isAddress(id)) return setStatus("Paste GameRoom address (0x...)");
+    pushRecent(id);
     navigate(`/lobby/${id}`);
   }
 
   return (
     <div className="start-root">
+      <div className="glow-circle glow-1" />
+      <div className="glow-circle glow-2" />
+
       <header className="start-header">
         <div className="brand">
           <span className="brand-mark">★</span>
@@ -218,7 +241,8 @@ export default function Start_Page() {
 
           <div className="buy-section">
             <div className="buy-label">
-              Buy tokens with ETH {tokensPerEth ? `(rate: ${formatUnits(tokensPerEth, 18)} DCT / 1 ETH)` : ""}
+              Buy tokens with ETH{" "}
+              {tokensPerEth ? `(rate: ${formatUnits(tokensPerEth, 18)} DCT / 1 ETH)` : ""}
             </div>
             <div className="buy-row">
               <input
@@ -235,13 +259,14 @@ export default function Start_Page() {
 
           <div className="join-section">
             <div className="join-label">Create a new room</div>
-            <div className="join-row" style={{ gap: 8 }}>
+
+            <div className="join-row" style={{ gap: 8, alignItems: "center" }}>
               <input
                 className="join-input"
                 placeholder="Bet (tokens)"
                 value={betTokens}
                 onChange={(e) => setBetTokens(e.target.value)}
-                style={{ maxWidth: 170 }}
+                style={{ maxWidth: 160 }}
               />
               <input
                 className="join-input"
@@ -254,8 +279,48 @@ export default function Start_Page() {
                 Create
               </button>
             </div>
-            <div style={{ marginTop: 8, opacity: 0.8, fontSize: 13 }}>
-              Topic is chosen on-chain from 5 real-life topics and shared for everyone.
+
+            <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <label style={{ fontSize: 12, opacity: 0.85 }}>
+                <input
+                  type="radio"
+                  checked={topicMode === "random"}
+                  onChange={() => setTopicMode("random")}
+                  style={{ marginRight: 6 }}
+                />
+                Random topic (on-chain)
+              </label>
+
+              <label style={{ fontSize: 12, opacity: 0.85 }}>
+                <input
+                  type="radio"
+                  checked={topicMode === "fixed"}
+                  onChange={() => setTopicMode("fixed")}
+                  style={{ marginRight: 6 }}
+                />
+                Choose topic
+              </label>
+
+              {topicMode === "fixed" && (
+                <select
+                  value={topicFixed}
+                  onChange={(e) => setTopicFixed(e.target.value)}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(255,255,255,0.18)",
+                    background: "rgba(11, 6, 32, 0.9)",
+                    color: "white",
+                    fontSize: 12,
+                  }}
+                >
+                  {TOPICS.map((t, i) => (
+                    <option key={i} value={String(i)}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
@@ -273,6 +338,25 @@ export default function Start_Page() {
               </button>
             </div>
           </div>
+
+          {recentRooms.length > 0 && (
+            <div className="join-section">
+              <div className="join-label">Recent rooms</div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {recentRooms.map((addr) => (
+                  <button
+                    key={addr}
+                    className="btn outline small"
+                    onClick={() => navigate(`/lobby/${addr}`)}
+                    style={{ justifyContent: "space-between" }}
+                  >
+                    <span>{shortenAddress(addr)}</span>
+                    <span style={{ opacity: 0.75 }}>Open →</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {status && <div className="status-bar">{status}</div>}
         </div>

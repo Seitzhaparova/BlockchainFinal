@@ -1,3 +1,4 @@
+// src/web3/abis.js
 export const ERC20_ABI = [
   "function symbol() view returns (string)",
   "function decimals() view returns (uint8)",
@@ -19,6 +20,7 @@ export const GAME_FACTORY_ABI = [
 ];
 
 export const GAME_ROOM_ABI = [
+  // base info
   "function host() view returns (address)",
   "function betAmount() view returns (uint256)",
   "function maxPlayers() view returns (uint256)",
@@ -27,12 +29,25 @@ export const GAME_ROOM_ABI = [
   "function stylingDeadline() view returns (uint256)",
   "function votingDeadline() view returns (uint256)",
   "function getPlayers() view returns (address[])",
+
+  // actions
   "function joinGame()",
   "function startGame()",
   "function submitOutfit(uint256 outfitCode)",
   "function startVoting()",
   "function castVotes(address[] targets, uint8[] stars)",
   "function finalize()",
+  "function cancelGame()",
+
+  // views
   "function getOutfit(address player) view returns (bool hasOutfit, uint256 outfitCode)",
   "function getWinners() view returns (address[] winners, uint256 finalPot, uint256 payoutPerWinner)",
+
+  // extra public getters (mappings/vars) – used by GUI
+  "function joined(address) view returns (bool)",
+  "function submitted(address) view returns (bool)",
+  "function submittedCount() view returns (uint256)",
+  "function hasVoted(address) view returns (bool)",
+  "function totalStars(address) view returns (uint256)",
+  "function voteCount(address) view returns (uint256)",
 ];

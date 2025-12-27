@@ -104,8 +104,7 @@ contract GameRoom {
     // Host can start with >= 2 players (including host)
     function startGame() external onlyHost {
         require(phase == Phase.Lobby, "Not lobby");
-        require(players.length >= 2, "Need 2+ players");
-
+        require(players.length >= 1, "Need 1+ players");
         phase = Phase.Styling;
         stylingDeadline = block.timestamp + stylingDuration;
 
@@ -129,7 +128,7 @@ contract GameRoom {
     // - and (deadline passed OR all players submitted)
     function startVoting() external onlyHost {
         require(phase == Phase.Styling, "Not styling");
-        require(submittedCount >= 2, "Need 2+ outfits");
+        require(submittedCount >= 1, "Need 1+ outfits");
 
         bool allSubmitted = (submittedCount == players.length);
         bool timeUp = (block.timestamp >= stylingDeadline);
