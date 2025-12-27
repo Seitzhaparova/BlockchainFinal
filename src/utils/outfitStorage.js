@@ -3,6 +3,23 @@
 const STORAGE_KEY = "dresschain_outfits";
 const RESULTS_KEY_PREFIX = "dc_results_";
 const PLAYER_STATUS_KEY = "dresschain_player_status";
+const PLAYER_NAMES_KEY = "dresschain_player_names";
+
+// --- Вспомогательные функции для работы с именами ---
+
+function loadPlayerName(address) {
+  if (!address) return "";
+  try {
+    const stored = localStorage.getItem(PLAYER_NAMES_KEY);
+    if (stored) {
+      const names = JSON.parse(stored);
+      return names[address.toLowerCase()] || "";
+    }
+  } catch (e) {
+    console.error("Error loading player name:", e);
+  }
+  return "";
+}
 
 // --- Базовые функции ---
 
@@ -20,10 +37,14 @@ export function saveOutfit(roomId, playerAddress, outfitData) {
   const storage = JSON.parse(localStorage.getItem(STORAGE_KEY));
   if (!storage[roomId]) storage[roomId] = {};
 
+  // Загружаем имя игрока
+  const playerName = loadPlayerName(playerAddress);
+
   // Сохраняем ВСЕ данные аутфита для правильного отображения
   storage[roomId][playerAddress] = {
     ...outfitData,
     playerAddress,
+    playerName, // Добавляем имя
     timestamp: Date.now(),
     isReady: true,
   };
@@ -45,7 +66,16 @@ export function saveOutfit(roomId, playerAddress, outfitData) {
 export function getAllOutfitsInRoom(roomId) {
   initStorage();
   const storage = JSON.parse(localStorage.getItem(STORAGE_KEY));
-  return storage[roomId] || {};
+  const outfits = storage[roomId] || {};
+
+  // Добавляем имена для всех аутфитов
+  Object.keys(outfits).forEach((address) => {
+    if (!outfits[address].playerName) {
+      outfits[address].playerName = loadPlayerName(address);
+    }
+  });
+
+  return outfits;
 }
 
 export function hasPlayerSubmitted(roomId, playerAddress) {
@@ -166,6 +196,7 @@ export async function generateTestPlayersWithOutfits(
       playerAddress: bot.address,
       isBot: true,
       name: bot.name,
+      playerName: bot.name, // Имя бота
       body,
       hair,
       shoes,
@@ -218,15 +249,23 @@ export function calculateAndSaveResults(roomId, userAddress, userRatings) {
   });
 
   // 3. Формируем массив победителей (со ВСЕМИ данными аутфита)
-  const ranked = players.map((addr) => ({
-    address: addr,
-    score: scores[addr],
-    outfit: { ...outfits[addr] }, // Копируем ВСЕ данные аутфита
-    name:
-      outfits[addr].name ||
-      (addr.startsWith("0xBot") ? "Fashion Bot" : "Player"),
-    isBot: outfits[addr].isBot || false,
-  }));
+  const ranked = players.map((addr) => {
+    const outfit = outfits[addr];
+    const name =
+      outfit.playerName ||
+      outfit.name ||
+      (addr.startsWith("0xBot")
+        ? "Fashion Bot"
+        : loadPlayerName(addr) || "Player");
+
+    return {
+      address: addr,
+      score: scores[addr],
+      outfit: { ...outfit }, // Копируем ВСЕ данные аутфита
+      name: name,
+      isBot: outfit.isBot || false,
+    };
+  });
 
   // Сортировка по убыванию очков
   ranked.sort((a, b) => b.score - a.score);

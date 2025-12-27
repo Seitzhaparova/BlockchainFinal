@@ -12,11 +12,26 @@ function shortenAddress(address) {
   return address.slice(0, 6) + "..." + address.slice(-4);
 }
 
+// Функция для загрузки имени игрока
+function loadPlayerName(address) {
+  if (!address) return "";
+  try {
+    const stored = localStorage.getItem("dresschain_player_names");
+    if (stored) {
+      const names = JSON.parse(stored);
+      return names[address.toLowerCase()] || "";
+    }
+  } catch (e) {
+    console.error("Error loading player name:", e);
+  }
+  return "";
+}
+
 // ======================
-// TUNING CONSTANTS (скопировано из Game_Active)
+// TUNING CONSTANTS
 // ======================
-const STAGE_W = 90; // Увеличим размер для результатов
-const STAGE_H = 190;
+const STAGE_W = 90; // Вернул ваш размер
+const STAGE_H = 190; // Вернул ваш размер
 
 const Z_BODY = 1;
 const Z_STOCKINGS = 10;
@@ -696,9 +711,18 @@ function WinnerOutfitDisplay({ outfit }) {
   );
 }
 
-// mock balance
+// mock balance - используем сохранение в localStorage
 async function fetchTokenBalance(_address) {
-  return Math.floor(Math.random() * 1000);
+  try {
+    const stored = localStorage.getItem("dresschain_token_balance");
+    if (stored) {
+      const balances = JSON.parse(stored);
+      return balances[_address.toLowerCase()] || 0;
+    }
+  } catch (e) {
+    console.error("Error loading token balance:", e);
+  }
+  return 0;
 }
 
 function getEthereum() {
@@ -734,6 +758,9 @@ function buildWinnersFromJson(resultsJson) {
 
   return [1, 2, 3].map((r, i) => {
     const w = map.get(r) || {};
+    const playerName = loadPlayerName(w.address) || w.playerName || w.name || 
+                      (w.address?.startsWith("0xBot") ? "Fashion Bot" : "Player");
+    
     return {
       rank: r,
       address: w.address || "",
@@ -741,7 +768,8 @@ function buildWinnersFromJson(resultsJson) {
       outfit: w.outfit || {},
       chatText: "",
       chatUntil: 0,
-      name: w.name || (w.address?.startsWith("0xBot") ? "Fashion Bot" : "Player"),
+      name: playerName,
+      playerName: playerName,
       isBot: w.isBot || false
     };
   });
@@ -897,7 +925,7 @@ export default function ResultPage() {
     navigate("/");
   }
 
-  // ✅ Ваши настроенные позиции (девушки + информационные баблы)
+  // ✅ Ваши настроенные позиции (девушки + информационные баблы) - ваш оригинальный стиль
   const slotPos = {
     1: { left: "50%", bottom: "50%", size: 190 },
     2: { left: "30%", bottom: "40%", size: 165 },
@@ -926,7 +954,12 @@ export default function ResultPage() {
           {account ? (
             <>
               <span className="wallet-label">Кошелек</span>
-              <span className="wallet-address">{shortenAddress(account)}</span>
+              <span className="wallet-address" style={{ 
+                fontWeight: "bold",
+                color: loadPlayerName(account) ? "#240C3A" : "inherit"
+              }}>
+                {loadPlayerName(account) || shortenAddress(account)}
+              </span>
               <span className="lobby-dot ok" />
             </>
           ) : (
@@ -994,7 +1027,8 @@ export default function ResultPage() {
                   const pos = slotPos[w.rank] || slotPos[3];
                   
                   const showChat = w.chatText && w.chatUntil > Date.now();
-                  const walletText = w.address ? shortenAddress(w.address) : "—";
+                  const displayName = w.playerName || w.name || 
+                                    (w.address?.startsWith?.("0xBot") ? "Fashion Bot" : shortenAddress(w.address) || "—");
                   const scoreText = w.score !== "" ? w.score : "—";
 
                   return (
@@ -1011,7 +1045,7 @@ export default function ResultPage() {
                         zIndex: 2, // ✅ ensure above podium
                       }}
                     >
-                      {/* Player info bubble */}
+                      {/* Player info bubble - ваш оригинальный стиль */}
                       <div
                         style={{
                           padding: "5px 5px",
@@ -1043,7 +1077,7 @@ export default function ResultPage() {
                         }}>
                           {w.rank === 1 ? "🥇 WINNER" : w.rank === 2 ? "🥈 2nd Place" : "🥉 3rd Place"}
                         </div>
-                        <div style={{ marginTop: "4px" }}>Player: {walletText}</div>
+                        <div style={{ marginTop: "4px" }}>Player: {displayName}</div>
                         <div>Score: {scoreText} ⭐</div>
                         {w.isBot && <div style={{ fontSize: "10px", fontStyle: "italic" }}>(Bot)</div>}
                       </div>
