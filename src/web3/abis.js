@@ -1,5 +1,7 @@
 // src/web3/abis.js
+
 export const ERC20_ABI = [
+  "function name() view returns (string)",
   "function symbol() view returns (string)",
   "function decimals() view returns (uint8)",
   "function balanceOf(address) view returns (uint256)",
@@ -8,15 +10,12 @@ export const ERC20_ABI = [
 ];
 
 export const TOKEN_SALE_ABI = [
-  "function tokensPerEth() view returns (uint256)",
   "function buyTokens() payable",
 ];
 
 export const GAME_FACTORY_ABI = [
-  "function bank() view returns (address)",
-  "function createGame(uint256 betAmount, uint256 maxPlayers, uint256 topicId) returns (address)",
-  "event GameCreated(address indexed gameAddress, address indexed host, uint256 betAmount, uint256 topicId)",
-  "function getAllGames() view returns (address[])",
+  "function createRoom(uint256 betAmount, uint256 maxPlayers, uint256 topicId) returns (address)",
+  "event RoomCreated(address indexed room, address indexed host, uint256 betAmount, uint256 maxPlayers, uint256 topicId)",
 ];
 
 export const GAME_ROOM_ABI = [
@@ -29,6 +28,10 @@ export const GAME_ROOM_ABI = [
   "function stylingDeadline() view returns (uint256)",
   "function votingDeadline() view returns (uint256)",
   "function getPlayers() view returns (address[])",
+
+  // IMPORTANT: add these getters (they exist because variables are public in Solidity)
+  "function bank() view returns (address)",
+  "function token() view returns (address)",
 
   // actions
   "function joinGame()",

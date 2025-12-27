@@ -17,6 +17,7 @@ const PHASE = ["Lobby", "Styling", "Voting", "Ended", "Canceled"];
 const CHAT_TTL_MS = 2 * 60 * 1000;
 const REFRESH_MS = 2000;
 
+// avatars pool
 const BODY_MAP = import.meta.glob("../assets/characters/*.png", {
   eager: true,
   import: "default",
@@ -33,8 +34,6 @@ const FALLBACK_TOPICS = [
   "Y2K ICON",
   "DARK ELEGANCE",
   "STUDY DATE AT THE LIBRARY",
-  "BRUNCH AT THE CITY MALL",
-  "RUNNING ERRANDS AND GROCERY SHOPPING",
 ];
 
 function pickRandom(arr) {
@@ -50,19 +49,20 @@ function isZeroAddress(a) {
   );
 }
 
-function safeNum(x, fallback = 0) {
+function toSmallInt(x, fallback = 0) {
   try {
     if (x == null) return fallback;
     if (typeof x === "number") return Number.isFinite(x) ? x : fallback;
     if (typeof x === "bigint") {
-      const max = BigInt(Number.MAX_SAFE_INTEGER);
-      if (x > max) return fallback;
+      // these values should be small (phase/maxPlayers/topicId)
+      if (x > 1_000_000n) return fallback;
       return Number(x);
     }
     if (typeof x === "string") {
       const n = Number(x);
       return Number.isFinite(n) ? n : fallback;
     }
+    if (Array.isArray(x) && x.length === 1) return toSmallInt(x[0], fallback);
     return fallback;
   } catch {
     return fallback;
@@ -70,13 +70,11 @@ function safeNum(x, fallback = 0) {
 }
 
 function getTopicTextFromId(topicIdNum) {
-  // 1) function export
   if (typeof Topics.getTopicText === "function") {
     const t = Topics.getTopicText(topicIdNum);
     if (t) return t;
   }
 
-  // 2) array export
   const arr =
     Topics.TOPICS ||
     Topics.GAME_TOPICS ||
@@ -86,30 +84,16 @@ function getTopicTextFromId(topicIdNum) {
 
   if (Array.isArray(arr) && arr[topicIdNum]) return arr[topicIdNum];
 
-  // 3) map export
   const map = Topics.TOPIC_MAP || Topics.topicMap || null;
   if (map && map[topicIdNum]) return map[topicIdNum];
 
-  // 4) fallback local
   if (FALLBACK_TOPICS[topicIdNum]) return FALLBACK_TOPICS[topicIdNum];
   return topicIdNum >= 0 ? `Topic #${topicIdNum}` : "—";
 }
 
-function parseEthersError(e) {
-  return (
-    e?.shortMessage ||
-    e?.reason ||
-    e?.info?.error?.message ||
-    e?.error?.message ||
-    e?.data?.message ||
-    e?.message ||
-    "Transaction failed."
-  );
-}
-
 export default function GameLobby() {
   const navigate = useNavigate();
-  const { roomId } = useParams(); // room contract address
+  const { roomId } = useParams();
 
   const [account, setAccount] = useState(null);
   const [status, setStatus] = useState("");
@@ -122,9 +106,12 @@ export default function GameLobby() {
   const [betHuman, setBetHuman] = useState("—");
   const [betRaw, setBetRaw] = useState(null);
 
-  const [players, setPlayers] = useState([]); // normalized slots
+  const [bankAddr, setBankAddr] = useState("—");
+  const [tokenAddr, setTokenAddr] = useState("—");
+
+  const [players, setPlayers] = useState([]); // slots
   const [chatInput, setChatInput] = useState("");
-  const [chatByAddr, setChatByAddr] = useState({}); // { addrLower: {text, until} }
+  const [chatByAddr, setChatByAddr] = useState({});
 
   const avatarRef = useRef(new Map());
   const tokenDecimalsRef = useRef(null);
@@ -187,7 +174,7 @@ export default function GameLobby() {
       setStatus(acc ? "Connected." : "Not connected.");
     } catch (e) {
       console.error(e);
-      setStatus(parseEthersError(e));
+      setStatus(e?.message || "Failed to connect MetaMask.");
     }
   }
 
@@ -203,36 +190,54 @@ export default function GameLobby() {
         const provider = await getProvider();
         const room = getRoom(roomId, provider);
 
-        const host = await room.host();
-        const mp = safeNum(await room.maxPlayers(), 2);
-        const ph = safeNum(await room.phase(), 0);
-
-        // topicId can be bigint -> convert safely
-        const topicIdRaw = await room.topicId();
-        const topicId = safeNum(topicIdRaw, -1);
-
-        const bet = await room.betAmount();
-        const rawPlayers = await room.getPlayers(); // address[]
+        const [
+          host,
+          mpRaw,
+          phRaw,
+          topicIdRaw,
+          bet,
+          rawPlayers,
+          bAddr,
+          tAddr,
+        ] = await Promise.all([
+          room.host(),
+          room.maxPlayers(),
+          room.phase(),
+          room.topicId(),
+          room.betAmount(),
+          room.getPlayers(),
+          // these two are the KEY to fixing JOIN
+          room.bank(),
+          room.token(),
+        ]);
 
         if (stop) return;
 
+        const mp = Math.max(2, toSmallInt(mpRaw, 2));
+        const ph = toSmallInt(phRaw, 0);
+        const topicId = toSmallInt(topicIdRaw, -1);
+
         setRoomHost(host && !isZeroAddress(host) ? host : "—");
-        setMaxPlayers(Math.max(2, mp));
+        setMaxPlayers(mp);
         setPhase(ph);
         setBetRaw(bet);
 
+        setBankAddr(bAddr && !isZeroAddress(bAddr) ? bAddr : "—");
+        setTokenAddr(tAddr && !isZeroAddress(tAddr) ? tAddr : "—");
+
         setRoomTopic(getTopicTextFromId(topicId));
 
-        // bet display using token decimals (defensive)
+        // bet display
         try {
           let decimals = tokenDecimalsRef.current;
           if (decimals == null) {
-            const { token } = getAddresses();
-            if (token) {
-              const t = getToken(token, provider);
-              const d = await t.decimals();
-              const dNum = safeNum(d, 18);
-              decimals = dNum >= 0 && dNum <= 36 ? dNum : 18;
+            const tokenFromRoom = tAddr && !isZeroAddress(tAddr) ? tAddr : null;
+            const tokenFromEnv = getAddresses()?.token;
+            const tokenToUse = tokenFromRoom || tokenFromEnv;
+
+            if (tokenToUse) {
+              const t = getToken(tokenToUse, provider);
+              decimals = toSmallInt(await t.decimals(), 18);
             } else {
               decimals = 18;
             }
@@ -243,7 +248,7 @@ export default function GameLobby() {
           setBetHuman(String(bet));
         }
 
-        // normalize players into slots
+        // normalize players into fixed slots (host first visually)
         const arr = Array.isArray(rawPlayers)
           ? rawPlayers.filter((a) => !isZeroAddress(a))
           : [];
@@ -252,11 +257,12 @@ export default function GameLobby() {
         if (host && !isZeroAddress(host)) normalized.push(host);
 
         for (const a of arr) {
-          if (normalized.some((x) => x.toLowerCase() === a.toLowerCase())) continue;
+          if (normalized.some((x) => x.toLowerCase() === a.toLowerCase()))
+            continue;
           normalized.push(a);
         }
 
-        const slots = new Array(Math.max(2, mp)).fill(null).map((_, i) => {
+        const slots = new Array(mp).fill(null).map((_, i) => {
           const addr = normalized[i] ?? null;
           const filled = !!addr;
           const role =
@@ -269,10 +275,16 @@ export default function GameLobby() {
         });
 
         setPlayers(slots);
-        setStatus((s) => (s.startsWith("Failed to load room state") ? "" : s));
+
+        setStatus((s) =>
+          s.startsWith("Failed to load room state") ? "" : s
+        );
       } catch (e) {
         console.error(e);
-        if (!stop) setStatus("Failed to load room state (check ABI / address / network).");
+        if (!stop)
+          setStatus(
+            "Failed to load room state (check ABI / address / network)."
+          );
       }
     }
 
@@ -286,7 +298,7 @@ export default function GameLobby() {
     };
   }, [roomId]);
 
-  // auto-route by phase
+  // phase routing
   useEffect(() => {
     if (!roomId) return;
     if (phase === 1) navigate(`/active/${roomId}`, { replace: true });
@@ -295,7 +307,10 @@ export default function GameLobby() {
   }, [phase, roomId, navigate]);
 
   // ---- chat (localStorage room scoped) ----
-  const CHAT_KEY = useMemo(() => (roomId ? `dc_chat_${roomId}` : null), [roomId]);
+  const CHAT_KEY = useMemo(
+    () => (roomId ? `dc_chat_${roomId}` : null),
+    [roomId]
+  );
 
   function loadChatMap() {
     if (!CHAT_KEY) return {};
@@ -354,7 +369,9 @@ export default function GameLobby() {
     try {
       const raw = localStorage.getItem(CHAT_KEY);
       const arr = raw ? JSON.parse(raw) : [];
-      const cleaned = (Array.isArray(arr) ? arr : []).filter((m) => m?.until > now);
+      const cleaned = (Array.isArray(arr) ? arr : []).filter(
+        (m) => m?.until > now
+      );
       cleaned.push(msg);
       localStorage.setItem(CHAT_KEY, JSON.stringify(cleaned.slice(-200)));
     } catch {}
@@ -380,7 +397,10 @@ export default function GameLobby() {
     }
   }
 
-  const filledCount = useMemo(() => players.filter((p) => !!p.address).length, [players]);
+  const filledCount = useMemo(
+    () => players.filter((p) => !!p.address).length,
+    [players]
+  );
 
   const isHost = useMemo(() => {
     if (!account || !roomHost || roomHost === "—") return false;
@@ -389,7 +409,9 @@ export default function GameLobby() {
 
   const isJoined = useMemo(() => {
     if (!account) return false;
-    return players.some((p) => p.address && p.address.toLowerCase() === account.toLowerCase());
+    return players.some(
+      (p) => p.address && p.address.toLowerCase() === account.toLowerCase()
+    );
   }, [players, account]);
 
   function handleCopyRoomAddress() {
@@ -403,49 +425,46 @@ export default function GameLobby() {
     }
   }
 
-  // ✅ JOIN TX: (precheck) balance/allowance -> approve -> joinGame
+  // ✅ FIXED JOIN: approve BANK (not room) then joinGame()
   async function handleJoinGame() {
     if (!roomId) return setStatus("Room address missing.");
     if (!account) return setStatus("Connect wallet first.");
 
     try {
-      // prechecks before MetaMask gas estimation
-      const provider = await getProvider();
-      const roomRead = getRoom(roomId, provider);
-      const ph = safeNum(await roomRead.phase(), 0);
-      if (ph !== 0) return setStatus("Cannot join: game is not in Lobby phase.");
-
-      if (typeof roomRead.joined === "function") {
-        const already = await roomRead.joined(account);
-        if (already) return setStatus("You already joined this room.");
-      }
-
-      if (!betRaw) return setStatus("Bet not loaded yet. Wait 1–2 seconds.");
+      setStatus("Preparing join…");
 
       const signer = await getSigner();
       const room = getRoom(roomId, signer);
 
-      const { token } = getAddresses();
-      if (!token) return setStatus("Token address missing in .env (VITE_TOKEN_ADDRESS).");
+      // IMPORTANT: bank is the spender that needs allowance
+      const bank = await room.bank();
+      const tokenFromRoom = await room.token();
 
-      const t = getToken(token, signer);
+      const tokenFromEnv = getAddresses()?.token;
+      const tokenToUse =
+        tokenFromRoom && !isZeroAddress(tokenFromRoom)
+          ? tokenFromRoom
+          : tokenFromEnv;
 
-      // check balance
-      if (typeof t.balanceOf === "function") {
-        const bal = await t.balanceOf(account);
-        if (bal < betRaw) {
-          return setStatus("Not enough DCT to join (balance < bet).");
-        }
+      if (!tokenToUse || isZeroAddress(tokenToUse)) {
+        setStatus("Token address missing (room.token() / env).");
+        return;
+      }
+      if (!bank || isZeroAddress(bank)) {
+        setStatus("Bank address missing (room.bank()).");
+        return;
       }
 
-      // check allowance & approve if needed
-      if (typeof t.allowance === "function" && typeof t.approve === "function") {
-        const allowance = await t.allowance(account, roomId);
-        if (allowance < betRaw) {
-          setStatus("Approving DCT… confirm in MetaMask.");
-          const txA = await t.approve(roomId, betRaw);
-          await txA.wait();
-        }
+      const bet = await room.betAmount();
+      const t = getToken(tokenToUse, signer);
+
+      // Allowance must be for BANK
+      const allowance = await t.allowance(account, bank);
+
+      if (allowance < bet) {
+        setStatus("Approving DCT for BANK… confirm in MetaMask.");
+        const txA = await t.approve(bank, bet);
+        await txA.wait();
       }
 
       setStatus("Joining… confirm in MetaMask.");
@@ -456,10 +475,16 @@ export default function GameLobby() {
       await loadRoomRef.current?.();
     } catch (e) {
       console.error(e);
-      setStatus(parseEthersError(e));
+      const msg =
+        e?.shortMessage ||
+        e?.reason ||
+        (typeof e?.message === "string" ? e.message : "") ||
+        "Join failed (reverted).";
+      setStatus(msg);
     }
   }
 
+  // START (keep your current behavior)
   async function handleStartGame() {
     if (!account) return setStatus("Connect wallet first.");
     if (!isHost) return setStatus("Only host can start.");
@@ -477,7 +502,8 @@ export default function GameLobby() {
       navigate(`/active/${roomId}`);
     } catch (e) {
       console.error(e);
-      setStatus(parseEthersError(e));
+      const msg = e?.shortMessage || e?.reason || e?.message || "Start failed.";
+      setStatus(msg);
     }
   }
 
@@ -527,7 +553,10 @@ export default function GameLobby() {
                 gap: 12,
               }}
             >
-              <button className="btn outline small" onClick={() => navigate("/")}>
+              <button
+                className="btn outline small"
+                onClick={() => navigate("/")}
+              >
                 ← Back
               </button>
 
@@ -581,6 +610,12 @@ export default function GameLobby() {
               <div style={{ fontSize: 12 }}>
                 <strong>Phase:</strong> {PHASE[phase] ?? String(phase)}
               </div>
+
+              {/* debug (optional but useful) */}
+              <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
+                <div>Token: {tokenAddr === "—" ? "—" : shortenAddress(tokenAddr)}</div>
+                <div>Bank: {bankAddr === "—" ? "—" : shortenAddress(bankAddr)}</div>
+              </div>
             </div>
 
             {/* players grid */}
@@ -592,8 +627,14 @@ export default function GameLobby() {
                   p.address &&
                   p.address.toLowerCase() === account.toLowerCase();
 
-                const badge = p.role === "HOST" ? "HOST" : filled ? "PLAYER" : "EMPTY";
-                const displayName = filled ? (you ? "You" : shortenAddress(p.address)) : "Waiting…";
+                const badge =
+                  p.role === "HOST" ? "HOST" : filled ? "PLAYER" : "EMPTY";
+
+                const displayName = filled
+                  ? you
+                    ? "You"
+                    : shortenAddress(p.address)
+                  : "Waiting…";
 
                 const chat = filled ? chatByAddr[p.address.toLowerCase()] : null;
                 const showChat = !!chat?.text && chat.until > Date.now();
