@@ -62,7 +62,6 @@ export default function Result_Page() {
   const assets = ASSETS;
 
   const [status, setStatus] = useState("");
-
   const [topicId, setTopicId] = useState(0);
 
   const [tokenSymbol, setTokenSymbol] = useState("DCT");
@@ -203,7 +202,6 @@ export default function Result_Page() {
             margin: "0 auto",
             height: 560,
             position: "relative",
-            // IMPORTANT: no backdropFilter here => no “blur container”
             background: "transparent",
           }}
         >
@@ -212,11 +210,14 @@ export default function Result_Page() {
             const name = loadPlayerName(p.addr) || shortenAddress(p.addr);
             const avg = p.voteCount > 0n ? Number(p.avgScaled) / 1_000_000 : 0;
 
-            // smaller sizes (your screenshot: too big before)
+            // avatar/outfit size
             const baseW = 115;
             const baseH = 220;
             const w = Math.round(baseW * (pos.scale || 1));
             const h = Math.round(baseH * (pos.scale || 1));
+
+            // badge goes ABOVE the avatar (absolute, doesn't change the avatar "feet" position)
+            const badgeTop = -36; // tweak if you want higher/lower
 
             return (
               <div
@@ -226,43 +227,53 @@ export default function Result_Page() {
                   left: pos.left,
                   top: pos.top,
                   transform: "translate(-50%, -100%)",
-                  textAlign: "center",
                 }}
               >
-                {p.outfitObj ? (
-                  <div style={{ width: w, height: h, filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.25))" }}>
-                    <OutfitStage outfit={p.outfitObj} width={w} height={h} nameMaps={NAME_MAPS} />
-                  </div>
-                ) : (
-                  <img
-                    src={avatarForAddress(p.addr)}
-                    alt=""
-                    draggable={false}
+                {/* wrapper keeps avatar position stable; badge is absolutely positioned above */}
+                <div style={{ position: "relative", width: w, height: h, display: "grid", placeItems: "center" }}>
+                  {/* ✅ BADGE ABOVE */}
+                  <div
                     style={{
-                      width: w,
-                      height: "auto",
-                      filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.25))",
-                      userSelect: "none",
+                      position: "absolute",
+                      top: badgeTop,
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      background: "rgba(20, 12, 32, 0.55)",
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      color: "white",
+                      fontSize: 12,
+                      whiteSpace: "nowrap",
+                      maxWidth: 260,
                       pointerEvents: "none",
+                      userSelect: "none",
+                      boxShadow: "0 10px 18px rgba(0,0,0,0.18)",
                     }}
-                  />
-                )}
+                    title={p.addr}
+                  >
+                    <b>#{i + 1}</b> {name} • {avg.toFixed(2)}★
+                  </div>
 
-                <div
-                  style={{
-                    marginTop: 8,
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    background: "rgba(20, 12, 32, 0.55)",
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    color: "white",
-                    fontSize: 12,
-                    backdropFilter: "none", // ensure badge itself doesn't blur background
-                    maxWidth: 260,
-                  }}
-                  title={p.addr}
-                >
-                  <b>#{i + 1}</b> {name} • {avg.toFixed(2)}★
+                  {/* avatar/outfit */}
+                  {p.outfitObj ? (
+                    <div style={{ width: w, height: h, filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.25))" }}>
+                      <OutfitStage outfit={p.outfitObj} width={w} height={h} nameMaps={NAME_MAPS} />
+                    </div>
+                  ) : (
+                    <img
+                      src={avatarForAddress(p.addr)}
+                      alt=""
+                      draggable={false}
+                      style={{
+                        width: w,
+                        height: "auto",
+                        filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.25))",
+                        userSelect: "none",
+                        pointerEvents: "none",
+                      }}
+                    />
+                  )}
                 </div>
               </div>
             );
@@ -291,7 +302,8 @@ export default function Result_Page() {
           </div>
 
           <div style={{ marginTop: 10, opacity: 0.9, fontSize: 13 }}>
-            Winners from contract: {winners?.length ? winners.map(shortenAddress).join(", ") : "— (not finalized yet)"}
+            Winners from contract:{" "}
+            {winners?.length ? winners.map(shortenAddress).join(", ") : "— (not finalized yet)"}
           </div>
 
           {status && (
