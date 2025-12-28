@@ -4,9 +4,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import "../main_page.css";
 
 import { formatUnits } from "ethers";
-import { getProvider } from "../web3/eth";
-import { topicText } from "../web3/topics";
-import { assertAddresses, getAddresses, getRoom, getToken } from "../web3/contracts";
+import { getProvider } from "../web3/eth.js";
+import { topicText } from "../web3/topics.js";
+import { getAddresses, getRoom, getToken } from "../web3/contracts.js";
 
 // Podium background
 import bgImg from "../assets/results/background.png";
@@ -44,14 +44,12 @@ function avatarForAddress(addr) {
   return AVATARS[idx];
 }
 
-// rank positions on background (tune if needed)
+// ✅ Tuned for typical podium background (feet align around bottom area)
+// You can tweak these 3 numbers if needed:
 const PODIUM_POS = [
-  // 1st
-  { left: "50%", top: "52%", scale: 1.15 },
-  // 2nd
-  { left: "29%", top: "61%", scale: 1.0 },
-  // 3rd
-  { left: "71%", top: "63%", scale: 1.0 },
+  { left: "50%", top: "86%", scale: 1.15 }, // 1st
+  { left: "31%", top: "90%", scale: 1.0 },  // 2nd
+  { left: "69%", top: "90%", scale: 1.0 },  // 3rd
 ];
 
 export default function Result_Page() {
@@ -72,72 +70,67 @@ export default function Result_Page() {
   const [rows, setRows] = useState([]); // sorted leaderboard (all submitted)
   const top3 = useMemo(() => rows.slice(0, 3), [rows]);
 
-  const { token: TOKEN_ADDR } = getAddresses();
-  const hasConfig = useMemo(() => {
-    try {
-      assertAddresses();
-      return true;
-    } catch {
-      return false;
-    }
-  }, [TOKEN_ADDR]);
-
   async function refresh() {
-    if (!hasConfig) return;
+    if (!roomId) return;
 
     try {
       const provider = await getProvider();
       const room = getRoom(roomId, provider);
-      const token = getToken(TOKEN_ADDR, provider);
 
-      const [tId, plist, sym, dec, res] = await Promise.all([
+      // token address: prefer room.token() (most reliable), fallback to env token
+      let tokenAddr = null;
+      try {
+        tokenAddr = await room.token();
+      } catch {}
+
+      const { token: tokenEnv } = getAddresses();
+      const tokenToUse = tokenAddr && tokenAddr !== "0x0000000000000000000000000000000000000000" ? tokenAddr : tokenEnv;
+
+      const token = tokenToUse ? getToken(tokenToUse, provider) : null;
+
+      const [tId, plist, res, sym, dec] = await Promise.all([
         room.topicId(),
         room.getPlayers(),
-        token.symbol(),
-        token.decimals(),
-        room.getWinners(), // (winners, finalPot, payoutPerWinner) after finalize
+        room.getWinners(), // (winners, finalPot, payoutPerWinner)
+        token ? token.symbol().catch(() => "DCT") : Promise.resolve("DCT"),
+        token ? token.decimals().catch(() => 18) : Promise.resolve(18),
       ]);
 
       setTopicId(Number(tId));
       setTokenSymbol(sym);
       setTokenDecimals(Number(dec));
 
-      setWinners(res[0] || []);
-      setFinalPot((res[1] || 0n).toString());
-      setPayoutPerWinner((res[2] || 0n).toString());
+      setWinners(res?.[0] || []);
+      setFinalPot((res?.[1] || 0n).toString());
+      setPayoutPerWinner((res?.[2] || 0n).toString());
 
-      // Build leaderboard from on-chain totalStars/voteCount for submitted outfits
-      const next = [];
+      // leaderboard from totalStars/voteCount for submitted outfits
+      const entries = await Promise.all(
+        (Array.isArray(plist) ? plist : []).map(async (p) => {
+          const [has, code] = await room.getOutfit(p);
+          if (!has) return null;
 
-      // NOTE: room.getOutfit is the safest "submitted?" check
-      // totalStars/voteCount are public mappings in contract
-      const promises = plist.map(async (p) => {
-        const [has, code] = await room.getOutfit(p);
-        if (!has) return;
+          const [ts, vc] = await Promise.all([room.totalStars(p), room.voteCount(p)]);
+          const tsBI = BigInt(ts.toString());
+          const vcBI = BigInt(vc.toString());
 
-        const [ts, vc] = await Promise.all([room.totalStars(p), room.voteCount(p)]);
+          const avgScaled = vcBI > 0n ? (tsBI * 1_000_000n) / vcBI : 0n;
 
-        const tsBI = BigInt(ts.toString());
-        const vcBI = BigInt(vc.toString());
+          return {
+            addr: p,
+            outfitCode: code.toString(),
+            totalStars: tsBI,
+            voteCount: vcBI,
+            avgScaled,
+          };
+        })
+      );
 
-        // avgScaled = avg * 1e6 to sort deterministically
-        const avgScaled = vcBI > 0n ? (tsBI * 1_000_000n) / vcBI : 0n;
-
-        next.push({
-          addr: p,
-          outfitCode: code.toString(),
-          totalStars: tsBI,
-          voteCount: vcBI,
-          avgScaled,
-        });
-      });
-
-      await Promise.all(promises);
+      const next = entries.filter(Boolean);
 
       next.sort((a, b) => {
         if (a.avgScaled !== b.avgScaled) return a.avgScaled < b.avgScaled ? 1 : -1;
         if (a.totalStars !== b.totalStars) return a.totalStars < b.totalStars ? 1 : -1;
-        // stable tiebreaker
         return a.addr.toLowerCase().localeCompare(b.addr.toLowerCase());
       });
 
@@ -157,7 +150,7 @@ export default function Result_Page() {
   }, [roomId]);
 
   return (
-    <div style={{ minHeight: "100vh", position: "relative", overflow: "hidden" }}>
+    <div className="result-root">
       {/* background */}
       <img
         src={bgImg}
@@ -174,24 +167,22 @@ export default function Result_Page() {
         }}
       />
 
-      {/* Top bar */}
-      <div style={{ position: "relative", zIndex: 2, padding: "18px 20px" }}>
+      {/* Top block */}
+      <div style={{ position: "relative", zIndex: 3, padding: "18px 20px" }}>
         <div className="brand" style={{ marginBottom: 10 }}>
           <span className="brand-mark">★</span>
           <span className="brand-name">DressChain</span>
         </div>
 
-        <div
-          className="card"
-          style={{
-            maxWidth: 980,
-            margin: "0 auto",
-            backdropFilter: "blur(10px)",
-          }}
-        >
-          <h2 style={{ marginTop: 0 }}>Results</h2>
+        <div className="result-card">
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <h2 style={{ margin: 0 }}>Results</h2>
+            <button className="btn outline small" onClick={() => navigate("/")}>
+              Back to Start
+            </button>
+          </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
             <div>
               <b>Room:</b> {shortenAddress(roomId)}
             </div>
@@ -211,12 +202,16 @@ export default function Result_Page() {
             {winners?.length ? winners.map(shortenAddress).join(", ") : "— (not finalized yet)"}
           </div>
 
-          {status && <div className="status-bar" style={{ marginTop: 12 }}>{status}</div>}
+          {status && (
+            <div className="status-bar" style={{ marginTop: 12 }}>
+              {status}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Podium avatars */}
-      <div style={{ position: "relative", zIndex: 2 }}>
+      {/* ✅ Podium layer now fills the screen (fixes the “avatars stuck at top”) */}
+      <div className="result-podium-layer">
         {top3.map((p, i) => {
           const pos = PODIUM_POS[i] || PODIUM_POS[PODIUM_POS.length - 1];
           const name = loadPlayerName(p.addr) || shortenAddress(p.addr);
@@ -238,7 +233,7 @@ export default function Result_Page() {
                 alt=""
                 draggable={false}
                 style={{
-                  width: `${90 * pos.scale}px`,
+                  width: `${95 * pos.scale}px`,
                   height: "auto",
                   filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.35))",
                   userSelect: "none",
@@ -246,19 +241,7 @@ export default function Result_Page() {
                 }}
               />
 
-              <div
-                style={{
-                  marginTop: 6,
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  background: "rgba(10,10,20,0.55)",
-                  border: "1px solid rgba(255,255,255,0.2)",
-                  color: "white",
-                  fontSize: 12,
-                  backdropFilter: "blur(8px)",
-                  maxWidth: 220,
-                }}
-              >
+              <div className="result-badge" title={p.addr}>
                 <b>#{i + 1}</b> {name} • {avg.toFixed(2)}★
               </div>
             </div>
@@ -267,8 +250,8 @@ export default function Result_Page() {
       </div>
 
       {/* Leaderboard */}
-      <div style={{ position: "relative", zIndex: 2, padding: "0 20px 24px" }}>
-        <div className="card" style={{ maxWidth: 980, margin: "520px auto 0 auto" }}>
+      <div style={{ position: "relative", zIndex: 3, padding: "0 20px 24px" }}>
+        <div className="result-card result-leaderboard">
           <h3 style={{ marginTop: 0 }}>Leaderboard (computed from totalStars/voteCount)</h3>
 
           {rows.length === 0 ? (
@@ -277,7 +260,7 @@ export default function Result_Page() {
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr style={{ textAlign: "left", opacity: 0.85 }}>
+                  <tr style={{ textAlign: "left", opacity: 0.9 }}>
                     <th style={{ padding: "10px 8px" }}>Rank</th>
                     <th style={{ padding: "10px 8px" }}>Player</th>
                     <th style={{ padding: "10px 8px" }}>Avg ★</th>
@@ -289,15 +272,13 @@ export default function Result_Page() {
                   {rows.map((r, idx) => {
                     const name = loadPlayerName(r.addr) || shortenAddress(r.addr);
                     const avg = r.voteCount > 0n ? Number(r.avgScaled) / 1_000_000 : 0;
+                    const isWinner = winners?.some((w) => w.toLowerCase() === r.addr.toLowerCase());
 
                     return (
-                      <tr key={r.addr} style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>
+                      <tr key={r.addr} style={{ borderTop: "1px solid rgba(0,0,0,0.10)" }}>
                         <td style={{ padding: "10px 8px" }}>{idx + 1}</td>
                         <td style={{ padding: "10px 8px" }}>
-                          {name}{" "}
-                          {winners?.some((w) => w.toLowerCase() === r.addr.toLowerCase()) ? (
-                            <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.9 }}>🏆</span>
-                          ) : null}
+                          {name} {isWinner ? <span style={{ marginLeft: 8 }}>🏆</span> : null}
                         </td>
                         <td style={{ padding: "10px 8px" }}>{avg.toFixed(2)}</td>
                         <td style={{ padding: "10px 8px" }}>{r.totalStars.toString()}</td>
@@ -309,12 +290,6 @@ export default function Result_Page() {
               </table>
             </div>
           )}
-
-          <div style={{ marginTop: 14 }}>
-            <button className="btn" onClick={() => navigate("/")}>
-              Back to Start
-            </button>
-          </div>
         </div>
       </div>
     </div>
