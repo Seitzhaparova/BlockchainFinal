@@ -370,10 +370,13 @@ body {
 
   .start-main {
     grid-template-columns: 1fr;
+    align-items: flex-start 
   }
 
   .start-side {
     display: none;
+    align-self: flex-start !important;
+    justify-content: flex-start !important;
   }
 }
 /* ===== START PAGE additions: balance + buy tokens ===== */
@@ -1150,6 +1153,8 @@ body,
 .side-silhouette img {
   max-width: 100%;
   height: auto;
+  margin-top: 0 !important;     /* ✅ remove the 18px drop */
+  padding-top: 0 !important;
 }
 
 /* =========================
