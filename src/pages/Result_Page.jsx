@@ -62,9 +62,9 @@ function avatarForAddress(addr) {
  * (You can tweak these if you want.)
  */
 const PODIUM_POS = [
-  { left: "50%", top: "65%", scale: 1.0 }, // 1st
-  { left: "20%", top: "55%", scale: 0.9 }, // 2nd
-  { left: "10%", top: "45%", scale: 0.9 }, // 3rd
+  { left: "50%", top: "72%", scale: 1.0 }, // 1st
+  { left: "31%", top: "82%", scale: 0.9 }, // 2nd
+  { left: "69%", top: "84%", scale: 0.9 }, // 3rd
 ];
 
 export default function Result_Page() {
@@ -225,17 +225,17 @@ export default function Result_Page() {
 
       {/* ✅ 1) PODIUM FIRST */}
       <section style={{ position: "relative", zIndex: 2, padding: "12px 20px 0" }}>
-        <div
-          style={{
-            maxWidth: 1100,
-            margin: "0 auto",
-            background: "transparent",
-            border: "none",
-            borderRadius: 0,
-            overflow: "visible",
-            backdropFilter: "none",
-          }}
-        >
+      <div
+        style={{
+          maxWidth: 1100,
+          margin: "0 auto",
+          background: "transparent",
+          border: "none",
+          borderRadius: 0,
+          overflow: "visible",
+          backdropFilter: "none",
+        }}
+      >
 
           {/* this box controls podium height */}
           <div style={{ position: "relative", height: "min(720px, 72vh)" }}>

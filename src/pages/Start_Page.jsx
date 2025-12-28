@@ -212,7 +212,7 @@ export default function Start_Page() {
     pushRecent(id);
     navigate(`/lobby/${id}`);
   }
-  
+
   return (
     <div className="start-root">
       <div className="glow-circle glow-1" />
@@ -435,7 +435,8 @@ export default function Start_Page() {
                     🎉 Awesome!
                   </div>
                   <div>
-                    Ready to walk the blockchain runway? Create a game or join an existing one!
+                    Ready to walk the blockchain runway? Create a game or join
+                    an existing one!
                   </div>
                 </>
               )}
@@ -469,7 +470,7 @@ export default function Start_Page() {
               }}
             >
               <img
-                src="./assets/characters/girl1.png"
+                src="../../assets/characters/girl1.png"
                 alt="Fashion Assistant"
                 style={{
                   width: "100%",
@@ -483,11 +484,11 @@ export default function Start_Page() {
             {/* Decorative text */}
             <div
               className="silhouette-inner"
-              style={{ 
-                marginTop: "20px", 
+              style={{
+                marginTop: "20px",
                 opacity: "0.7",
                 fontSize: "12px",
-                textAlign: "center"
+                textAlign: "center",
               }}
             >
               Runway ready
