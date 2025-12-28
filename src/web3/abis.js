@@ -54,3 +54,12 @@ export const GAME_ROOM_ABI = [
   "function totalStars(address) view returns (uint256)",
   "function voteCount(address) view returns (uint256)",
 ];
+
+const TOKEN_SALE_ABI = [
+  "function token() view returns (address)",
+  "function tokensPerEth() view returns (uint256)",
+  "function buyTokens() payable",
+  "function sellTokens(uint256 tokenAmount)",
+  "function quoteTokensForEth(uint256 ethWei) view returns (uint256)",
+  "function quoteEthForTokens(uint256 tokenAmount) view returns (uint256)",
+];

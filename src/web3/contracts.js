@@ -31,3 +31,7 @@ export function getFactory(addr, signerOrProvider) {
 export function getRoom(roomAddr, signerOrProvider) {
   return new Contract(roomAddr, GAME_ROOM_ABI, signerOrProvider);
 }
+
+export function getTokenSale(address, runner) {
+  return new Contract(address, TOKEN_SALE_ABI, runner);
+}
