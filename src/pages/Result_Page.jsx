@@ -51,11 +51,11 @@ function avatarForAddress(addr) {
 
 // podium positions
 const PODIUM_POS = [
-  { left: "50%", top: "45%", scale: 1.15 }, // 1st
+  { left: "50%", top: "40%", scale: 1.15 }, // 1st
   { left: "31%", top: "55%", scale: 1.0 },  // 2nd
   { left: "69%", top: "65%", scale: 1.0 },  // 3rd
 ];
-const PODIUM_SHIFT_Y = "clamp(100px, 10vh, 130px)";
+const PODIUM_SHIFT_Y = "clamp(500px, 10vh, 130px)";
 
 export default function Result_Page() {
   const { roomId } = useParams();
