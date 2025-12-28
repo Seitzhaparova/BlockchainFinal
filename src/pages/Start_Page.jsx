@@ -76,29 +76,42 @@ export default function Start_Page() {
     } catch {}
   }
 
-  async function refresh() {
-    if (!hasConfig || !account) return;
+    async function refresh() {
+      if (!hasConfig || !account) return;
 
-    try {
-      const provider = await getProvider();
-      const token = getToken(TOKEN_ADDR, provider);
-      const sale = getTokenSale(SALE_ADDR, provider);
+      try {
+        const provider = await getProvider();
+        const token = getToken(TOKEN_ADDR, provider);
+        const sale = getTokenSale(SALE_ADDR, provider);
 
-      const [sym, dec, bal, rate] = await Promise.all([
-        token.symbol(),
-        token.decimals(),
-        token.balanceOf(account),
-        sale.tokensPerEth(),
-      ]);
+        // ✅ always fetch balance even if "rate" call fails
+        const [sym, dec, bal] = await Promise.all([
+          token.symbol(),
+          token.decimals(),
+          token.balanceOf(account),
+        ]);
 
-      setTokenSymbol(sym);
-      setTokenDecimals(Number(dec));
-      setTokenBalance(formatUnits(bal, Number(dec)));
-      setTokensPerEth(rate.toString());
-    } catch (e) {
-      console.error(e);
+        const decNum = Number(dec);
+        setTokenSymbol(sym);
+        setTokenDecimals(decNum);
+        setTokenBalance(formatUnits(bal, decNum));
+
+        // ✅ rate is optional (do NOT crash refresh)
+        let rate = null;
+        try {
+          if (typeof sale.tokensPerEth === "function") rate = await sale.tokensPerEth();
+          else if (typeof sale.TOKENS_PER_ETH === "function") rate = await sale.TOKENS_PER_ETH();
+          else if (typeof sale.rate === "function") rate = await sale.rate();
+        } catch (err) {
+          console.warn("TokenSale rate read failed:", err);
+        }
+
+        setTokensPerEth(rate ? rate.toString() : null);
+      } catch (e) {
+        console.error(e);
+      }
     }
-  }
+
 
   useEffect(() => {
     loadRecents();
@@ -258,9 +271,7 @@ export default function Start_Page() {
           <div className="buy-section">
             <div className="buy-label">
               Buy tokens with ETH{" "}
-              {tokensPerEth
-                ? `(rate: ${formatUnits(tokensPerEth, 18)} DCT / 1 ETH)`
-                : ""}
+              {tokensPerEth ? `(rate: ${formatUnits(tokensPerEth, tokenDecimals)} ${tokenSymbol} / 1 ETH)` : ""}
             </div>
             <div className="buy-row">
               <input
