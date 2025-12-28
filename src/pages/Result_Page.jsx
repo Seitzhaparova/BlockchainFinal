@@ -55,6 +55,7 @@ const PODIUM_POS = [
   { left: "31%", top: "65%", scale: 1.0 },  // 2nd
   { left: "69%", top: "75%", scale: 1.0 },  // 3rd
 ];
+const PODIUM_SHIFT_Y = "clamp(70px, 10vh, 130px)";
 
 export default function Result_Page() {
   const { roomId } = useParams();
@@ -249,7 +250,7 @@ export default function Result_Page() {
                 position: "absolute",
                 left: pos.left,
                 top: pos.top,
-                transform: "translate(-50%, -100%)",
+                transform: `translate(-50%, -100%) translateY(${PODIUM_SHIFT_Y})`,
                 textAlign: "center",
               }}
             >
