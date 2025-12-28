@@ -1,577 +1,316 @@
-// src/pages/Start_Page.jsx
+// src/pages/Result_Page.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import "../main_page.css";
 
-import { formatUnits, parseEther, parseUnits, isAddress } from "ethers";
-import { connectWallet, getProvider, getSigner } from "../web3/eth";
-import { TOPICS } from "../web3/topics";
-import {
-  assertAddresses,
-  getAddresses,
-  getFactory,
-  getToken,
-  getTokenSale,
-} from "../web3/contracts";
+import { formatUnits } from "ethers";
+import { getProvider } from "../web3/eth.js";
+import { TOPICS } from "../web3/topics.js";
+import { getAddresses, getRoom, getToken } from "../web3/contracts.js";
 
-// ✅ fix for assistant image (Vite way)
-import assistantImg from "../assets/characters/girl1.png";
+// outfit render (same as Voting)
+import OutfitStage from "../components/OutfitStage.jsx";
+import { ASSETS, NAME_MAPS } from "../utils/assetCatalogs.js";
+import { decodeOutfit } from "../utils/outfitCodec.js";
+
+// background image
+import bgImg from "../assets/results/background.png";
 
 function shortenAddress(address) {
   if (!address) return "";
   return address.slice(0, 6) + "..." + address.slice(-4);
 }
 
-export default function Start_Page() {
+function loadPlayerName(address) {
+  if (!address) return "";
+  try {
+    const stored = localStorage.getItem("dresschain_player_names");
+    if (stored) {
+      const names = JSON.parse(stored);
+      return names[address.toLowerCase()] || "";
+    }
+  } catch {}
+  return "";
+}
+
+// podium positions (tuned for your stage background)
+const PODIUM_POS = [
+  { left: "50%", top: "78%", scale: 1.12 }, // 1st
+  { left: "34%", top: "84%", scale: 0.96 }, // 2nd
+  { left: "66%", top: "86%", scale: 0.96 }, // 3rd
+];
+
+export default function Result_Page() {
+  const { roomId } = useParams();
   const navigate = useNavigate();
 
-  const [account, setAccount] = useState(null);
+  const assets = ASSETS;
+
   const [status, setStatus] = useState("");
+  const [topicId, setTopicId] = useState(0);
 
   const [tokenSymbol, setTokenSymbol] = useState("DCT");
   const [tokenDecimals, setTokenDecimals] = useState(18);
-  const [tokenBalance, setTokenBalance] = useState("0");
 
-  const [tokensPerEth, setTokensPerEth] = useState(null);
-  const [saleEthLiquidity, setSaleEthLiquidity] = useState("0");
+  const [finalPot, setFinalPot] = useState("0");
+  const [payoutPerWinner, setPayoutPerWinner] = useState("0");
+  const [winners, setWinners] = useState([]);
 
-  const [ethToSpend, setEthToSpend] = useState("");
-  const [tokensToSell, setTokensToSell] = useState("");
-  const [sellQuoteEth, setSellQuoteEth] = useState("");
-
-  const [betTokens, setBetTokens] = useState("10");
-  const [maxPlayers, setMaxPlayers] = useState("4");
-
-  const [topicMode, setTopicMode] = useState("random"); // "random" | "fixed"
-  const [topicFixed, setTopicFixed] = useState("0");
-
-  const [joinRoomInput, setJoinRoomInput] = useState("");
-  const [recentRooms, setRecentRooms] = useState([]);
-
-  const { token: TOKEN_ADDR, sale: SALE_ADDR, factory: FACTORY_ADDR } = getAddresses();
-
-  const hasConfig = useMemo(() => {
-    try {
-      assertAddresses();
-      return true;
-    } catch {
-      return false;
-    }
-  }, [TOKEN_ADDR, SALE_ADDR, FACTORY_ADDR]);
-
-  function loadRecents() {
-    try {
-      const raw = localStorage.getItem("dc_recent_rooms");
-      const arr = raw ? JSON.parse(raw) : [];
-      setRecentRooms(Array.isArray(arr) ? arr : []);
-    } catch {
-      setRecentRooms([]);
-    }
-  }
-
-  function pushRecent(roomAddr) {
-    try {
-      const raw = localStorage.getItem("dc_recent_rooms");
-      const arr = raw ? JSON.parse(raw) : [];
-      const next = [roomAddr, ...arr.filter((x) => x !== roomAddr)].slice(0, 8);
-      localStorage.setItem("dc_recent_rooms", JSON.stringify(next));
-      setRecentRooms(next);
-    } catch {}
-  }
+  const [rows, setRows] = useState([]); // sorted leaderboard
+  const top3 = useMemo(() => rows.slice(0, 3), [rows]);
 
   async function refresh() {
-    if (!hasConfig || !account) return;
+    if (!roomId) return;
 
     try {
       const provider = await getProvider();
-      const token = getToken(TOKEN_ADDR, provider);
-      const sale = getTokenSale(SALE_ADDR, provider);
+      const room = getRoom(roomId, provider);
 
-      const [sym, dec, bal] = await Promise.all([
-        token.symbol(),
-        token.decimals(),
-        token.balanceOf(account),
+      // token address: prefer room.token() (if exists), fallback to env token
+      let tokenAddr = null;
+      try {
+        tokenAddr = await room.token();
+      } catch {}
+
+      const { token: tokenEnv } = getAddresses();
+      const tokenToUse =
+        tokenAddr && tokenAddr !== "0x0000000000000000000000000000000000000000"
+          ? tokenAddr
+          : tokenEnv;
+
+      const token = tokenToUse ? getToken(tokenToUse, provider) : null;
+
+      const [tId, plist, res, sym, dec] = await Promise.all([
+        room.topicId(),
+        room.getPlayers(),
+        room.getWinners(), // (winners, finalPot, payoutPerWinner)
+        token ? token.symbol().catch(() => "DCT") : Promise.resolve("DCT"),
+        token ? token.decimals().catch(() => 18) : Promise.resolve(18),
       ]);
 
+      setTopicId(Number(tId));
       setTokenSymbol(sym);
       setTokenDecimals(Number(dec));
-      setTokenBalance(formatUnits(bal, Number(dec)));
 
-      // rate + liquidity (don’t let UI break if sale call fails)
-      try {
-        const rate = await sale.tokensPerEth();
-        setTokensPerEth(rate.toString());
-      } catch {
-        setTokensPerEth(null);
-      }
+      setWinners(res?.[0] || []);
+      setFinalPot((res?.[1] || 0n).toString());
+      setPayoutPerWinner((res?.[2] || 0n).toString());
 
-      try {
-        const ethBal = await provider.getBalance(SALE_ADDR);
-        setSaleEthLiquidity(formatUnits(ethBal, 18));
-      } catch {
-        setSaleEthLiquidity("0");
-      }
+      // leaderboard from totalStars/voteCount for submitted outfits
+      const entries = await Promise.all(
+        (Array.isArray(plist) ? plist : []).map(async (p) => {
+          const [has, code] = await room.getOutfit(p);
+          if (!has) return null;
+
+          const [ts, vc] = await Promise.all([room.totalStars(p), room.voteCount(p)]);
+          const tsBI = BigInt(ts.toString());
+          const vcBI = BigInt(vc.toString());
+
+          const avgScaled = vcBI > 0n ? (tsBI * 1_000_000n) / vcBI : 0n;
+
+          let outfitObj = null;
+          try {
+            const codeBI = typeof code === "bigint" ? code : BigInt(code.toString());
+            outfitObj = decodeOutfit(codeBI, assets);
+          } catch {
+            outfitObj = null;
+          }
+
+          return {
+            addr: p,
+            outfitCode: code.toString(),
+            outfitObj,
+            totalStars: tsBI,
+            voteCount: vcBI,
+            avgScaled,
+          };
+        })
+      );
+
+      const next = entries.filter(Boolean);
+
+      next.sort((a, b) => {
+        if (a.avgScaled !== b.avgScaled) return a.avgScaled < b.avgScaled ? 1 : -1;
+        if (a.totalStars !== b.totalStars) return a.totalStars < b.totalStars ? 1 : -1;
+        return a.addr.toLowerCase().localeCompare(b.addr.toLowerCase());
+      });
+
+      setRows(next);
+      setStatus("");
     } catch (e) {
       console.error(e);
+      setStatus("Failed to load results (wrong room / wrong network / game not ended yet).");
     }
   }
-
-  // estimate ETH you’ll receive for selling tokens
-  useEffect(() => {
-    (async () => {
-      if (!hasConfig || !SALE_ADDR) return setSellQuoteEth("");
-      const t = String(tokensToSell || "").replace(",", ".").trim();
-      const n = Number(t);
-      if (!Number.isFinite(n) || n <= 0) return setSellQuoteEth("");
-
-      try {
-        const provider = await getProvider();
-        const sale = getTokenSale(SALE_ADDR, provider);
-        const amt = parseUnits(t, tokenDecimals);
-
-        // contract quote
-        const ethOut = await sale.quoteEthForTokens(amt);
-        setSellQuoteEth(formatUnits(ethOut, 18));
-      } catch {
-        setSellQuoteEth("");
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokensToSell, tokenDecimals, hasConfig, SALE_ADDR]);
-
-  useEffect(() => {
-    loadRecents();
-    (async () => {
-      try {
-        const provider = await getProvider().catch(() => null);
-        if (!provider) return;
-        const accounts = await provider.send("eth_accounts", []);
-        if (accounts?.[0]) setAccount(accounts[0]);
-      } catch {}
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     refresh();
+    const t = setInterval(refresh, 2500);
+    return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account]);
-
-  async function onConnect() {
-    try {
-      setStatus("");
-      const acc = await connectWallet();
-      setAccount(acc);
-      setStatus("Wallet connected ✅");
-      await refresh();
-    } catch (e) {
-      console.error(e);
-      setStatus("Failed to connect wallet (make sure Sepolia is selected).");
-    }
-  }
-
-  async function buyTokens() {
-    if (!hasConfig) return setStatus("Missing .env contract addresses.");
-    if (!account) return setStatus("Connect wallet first.");
-
-    const ethStr = String(ethToSpend).replace(",", ".").trim();
-    const ethNum = Number(ethStr);
-    if (!Number.isFinite(ethNum) || ethNum <= 0) return setStatus("Enter ETH amount > 0");
-
-    try {
-      setStatus("Buying tokens... confirm MetaMask");
-      const signer = await getSigner();
-      const sale = getTokenSale(SALE_ADDR, signer);
-
-      const tx = await sale.buyTokens({ value: parseEther(ethStr) });
-      await tx.wait();
-
-      setStatus("Tokens purchased ✅");
-      setEthToSpend("");
-      await refresh();
-    } catch (e) {
-      console.error(e);
-      setStatus("Buy failed. Check Sepolia ETH + TokenSale funded with tokens.");
-    }
-  }
-
-  async function sellTokensForEth() {
-    if (!hasConfig) return setStatus("Missing .env contract addresses.");
-    if (!account) return setStatus("Connect wallet first.");
-
-    const tStr = String(tokensToSell).replace(",", ".").trim();
-    const tNum = Number(tStr);
-    if (!Number.isFinite(tNum) || tNum <= 0) return setStatus("Enter token amount > 0");
-
-    try {
-      setStatus("Selling tokens... confirm MetaMask (approve + sell)");
-      const signer = await getSigner();
-      const token = getToken(TOKEN_ADDR, signer);
-      const sale = getTokenSale(SALE_ADDR, signer);
-
-      const amt = parseUnits(tStr, tokenDecimals);
-
-      // approve if needed
-      const allowance = await token.allowance(account, SALE_ADDR);
-      if (allowance < amt) {
-        const txA = await token.approve(SALE_ADDR, amt);
-        await txA.wait();
-      }
-
-      // sell
-      const tx = await sale.sellTokens(amt);
-      await tx.wait();
-
-      setStatus("Sold ✅ ETH sent to your wallet");
-      setTokensToSell("");
-      await refresh();
-    } catch (e) {
-      console.error(e);
-      setStatus("Sell failed. Sale must have enough ETH liquidity + you need gas ETH.");
-    }
-  }
-
-  async function createGame() {
-    if (!hasConfig) return setStatus("Missing .env contract addresses.");
-    if (!account) return setStatus("Connect wallet first.");
-
-    const mp = Math.max(2, Math.min(10, Number(maxPlayers) || 4));
-
-    const topicId =
-      topicMode === "fixed"
-        ? Math.max(0, Math.min(TOPICS.length - 1, Number(topicFixed) || 0))
-        : Math.floor(Math.random() * TOPICS.length);
-
-    try {
-      setStatus("Creating game... confirm MetaMask");
-      const signer = await getSigner();
-      const factory = getFactory(FACTORY_ADDR, signer);
-
-      const betUnits = parseUnits(String(betTokens || "0"), tokenDecimals);
-      const tx = await factory.createGame(betUnits, mp, topicId);
-      const receipt = await tx.wait();
-
-      let roomAddr = null;
-      for (const log of receipt.logs) {
-        try {
-          const parsed = factory.interface.parseLog(log);
-          if (parsed?.name === "GameCreated") {
-            roomAddr = parsed.args.gameAddress;
-            break;
-          }
-        } catch {}
-      }
-
-      if (!roomAddr || !isAddress(roomAddr)) {
-        setStatus("Game created, but room address not detected. (Event parsing issue)");
-        return;
-      }
-
-      pushRecent(roomAddr);
-      setStatus("Game created ✅");
-      navigate(`/lobby/${roomAddr}`);
-    } catch (e) {
-      console.error(e);
-      setStatus("Create failed. Check deployment + Sepolia.");
-    }
-  }
-
-  function joinGame() {
-    const id = joinRoomInput.trim();
-    if (!isAddress(id)) return setStatus("Paste GameRoom address (0x...)");
-    pushRecent(id);
-    navigate(`/lobby/${id}`);
-  }
+  }, [roomId]);
 
   return (
-    <div className="start-root">
-      <div className="glow-circle glow-1" />
-      <div className="glow-circle glow-2" />
+    <div className="result-root" style={{ position: "relative", minHeight: "100vh" }}>
+      {/* background */}
+      <img
+        src={bgImg}
+        alt=""
+        draggable={false}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          userSelect: "none",
+          pointerEvents: "none",
+        }}
+      />
 
-      <header className="start-header">
-        <div className="brand">
+      {/* header */}
+      <div style={{ position: "relative", zIndex: 3, padding: "18px 20px 0" }}>
+        <div className="brand" style={{ marginBottom: 12 }}>
           <span className="brand-mark">★</span>
           <span className="brand-name">DressChain</span>
         </div>
+      </div>
 
-        <div className="wallet-pill">
-          <div className="wallet-balance">
-            <span className="wallet-label">Balance</span>
-            <span className="wallet-balance-value">
-              {tokenBalance} {tokenSymbol}
-            </span>
-          </div>
-          <span className="wallet-sep" />
-          {account ? (
-            <span className="wallet-address">{shortenAddress(account)}</span>
-          ) : (
-            <span className="wallet-disconnected">Not connected</span>
-          )}
-        </div>
-      </header>
+      {/* PODIUM (top) */}
+      <div
+        style={{
+          position: "relative",
+          zIndex: 2,
+          height: 560,
+          width: "100%",
+          overflow: "hidden",
+        }}
+      >
+        {/* IMPORTANT: no blur / no backdropFilter here */}
+        {top3.map((p, i) => {
+          const pos = PODIUM_POS[i] || PODIUM_POS[PODIUM_POS.length - 1];
+          const name = loadPlayerName(p.addr) || shortenAddress(p.addr);
+          const avg = p.voteCount > 0n ? Number(p.avgScaled) / 1_000_000 : 0;
 
-      <main className="start-main">
-        <div className="start-card">
-          <h1 className="start-title">Multiplayer On-Chain Dress-Up</h1>
+          const baseW = 120;
+          const baseH = 220;
+          const w = Math.round(baseW * (pos.scale || 1));
+          const h = Math.round(baseH * (pos.scale || 1));
 
-          {!hasConfig && (
-            <div className="status-bar">
-              ⚠️ Add deployed addresses into <b>.env</b>: VITE_TOKEN_ADDRESS / VITE_TOKEN_SALE_ADDRESS / VITE_GAME_FACTORY_ADDRESS
-            </div>
-          )}
-
-          <button className="btn primary" onClick={onConnect}>
-            {account ? "Wallet connected" : "Connect MetaMask (Sepolia)"}
-          </button>
-
-          {/* BUY */}
-          <div className="buy-section">
-            <div className="buy-label">
-              Buy tokens with ETH{" "}
-              {tokensPerEth
-                ? `(rate: ${formatUnits(tokensPerEth, tokenDecimals)} ${tokenSymbol} / 1 ETH)`
-                : ""}
-            </div>
-            <div className="buy-row">
-              <input
-                className="buy-input"
-                placeholder="ETH amount (e.g. 0.01)"
-                value={ethToSpend}
-                onChange={(e) => setEthToSpend(e.target.value)}
-              />
-              <button className="btn small buy-btn" onClick={buyTokens}>
-                Buy
-              </button>
-            </div>
-          </div>
-
-          {/* SELL */}
-          <div className="buy-section" style={{ marginTop: 14 }}>
-            <div className="buy-label">
-              Receive ETH from tokens{" "}
-              <span style={{ opacity: 0.85 }}>
-                (sale ETH liquidity: {saleEthLiquidity} ETH)
-              </span>
-            </div>
-
-            <div className="buy-row">
-              <input
-                className="buy-input"
-                placeholder={`Token amount (e.g. 50 ${tokenSymbol})`}
-                value={tokensToSell}
-                onChange={(e) => setTokensToSell(e.target.value)}
-              />
-              <button className="btn small buy-btn" onClick={sellTokensForEth}>
-                Sell
-              </button>
-            </div>
-
-            {sellQuoteEth ? (
-              <div className="buy-hint">
-                Estimated receive: <b>{sellQuoteEth} ETH</b>
-              </div>
-            ) : (
-              <div className="buy-hint">
-                Tip: You still need a tiny amount of Sepolia ETH for gas (approve + sell).
-              </div>
-            )}
-          </div>
-
-          {/* CREATE */}
-          <div className="join-section">
-            <div className="join-label">Create a new room</div>
-
-            <div className="join-row" style={{ gap: 8, alignItems: "center" }}>
-              <input
-                className="join-input"
-                placeholder="Bet (tokens)"
-                value={betTokens}
-                onChange={(e) => setBetTokens(e.target.value)}
-                style={{ maxWidth: 160 }}
-              />
-              <input
-                className="join-input"
-                placeholder="Max players (2..10)"
-                value={maxPlayers}
-                onChange={(e) => setMaxPlayers(e.target.value)}
-                style={{ maxWidth: 190 }}
-              />
-              <button className="btn small" onClick={createGame}>
-                Create
-              </button>
-            </div>
-
-            <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <label style={{ fontSize: 12, opacity: 0.85 }}>
-                <input
-                  type="radio"
-                  checked={topicMode === "random"}
-                  onChange={() => setTopicMode("random")}
-                  style={{ marginRight: 6 }}
-                />
-                Random topic (on-chain)
-              </label>
-
-              <label style={{ fontSize: 12, opacity: 0.85 }}>
-                <input
-                  type="radio"
-                  checked={topicMode === "fixed"}
-                  onChange={() => setTopicMode("fixed")}
-                  style={{ marginRight: 6 }}
-                />
-                Choose topic
-              </label>
-
-              {topicMode === "fixed" && (
-                <select
-                  value={topicFixed}
-                  onChange={(e) => setTopicFixed(e.target.value)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 999,
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    background: "rgba(11, 6, 32, 0.9)",
-                    color: "white",
-                    fontSize: 12,
-                  }}
-                >
-                  {TOPICS.map((t, i) => (
-                    <option key={i} value={String(i)}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          </div>
-
-          {/* JOIN */}
-          <div className="join-section">
-            <div className="join-label">Join existing room</div>
-            <div className="join-row">
-              <input
-                className="join-input"
-                placeholder="GameRoom address (0x...)"
-                value={joinRoomInput}
-                onChange={(e) => setJoinRoomInput(e.target.value)}
-              />
-              <button className="btn small" onClick={joinGame}>
-                Join
-              </button>
-            </div>
-          </div>
-
-          {/* RECENTS */}
-          {recentRooms.length > 0 && (
-            <div className="join-section">
-              <div className="join-label">Recent rooms</div>
-              <div style={{ display: "grid", gap: 8 }}>
-                {recentRooms.map((addr) => (
-                  <button
-                    key={addr}
-                    className="btn outline small"
-                    onClick={() => navigate(`/lobby/${addr}`)}
-                    style={{ justifyContent: "space-between" }}
-                  >
-                    <span>{shortenAddress(addr)}</span>
-                    <span style={{ opacity: 0.75 }}>Open →</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {status && <div className="status-bar">{status}</div>}
-        </div>
-
-        {/* Right column assistant */}
-        <div className="start-side">
-          <div className="side-silhouette">
+          return (
             <div
+              key={p.addr}
               style={{
-                position: "relative",
-                background: "rgba(255, 255, 255, 0.95)",
-                borderRadius: "16px",
-                padding: "16px 20px",
-                maxWidth: "280px",
-                margin: "0 auto 25px",
-                border: "2px solid rgba(255, 77, 166, 0.3)",
-                boxShadow: "0 10px 30px rgba(0, 0, 0, 0.2)",
-                color: "#240C3A",
-                fontSize: "14px",
-                lineHeight: "1.4",
+                position: "absolute",
+                left: pos.left,
+                top: pos.top,
+                transform: "translate(-50%, -100%)",
                 textAlign: "center",
-                zIndex: 2,
               }}
             >
-              {!account ? (
-                <>
-                  <div style={{ fontWeight: "bold", marginBottom: "8px", color: "#ff4da6" }}>
-                    👋 Welcome, fashionista!
-                  </div>
-                  <div>To start the game, connect your MetaMask crypto wallet!</div>
-                </>
-              ) : (
-                <>
-                  <div style={{ fontWeight: "bold", marginBottom: "8px", color: "#ff4da6" }}>
-                    🎉 Awesome!
-                  </div>
-                  <div>Ready to walk the blockchain runway? Create a game or join an existing one!</div>
-                </>
-              )}
-
               <div
                 style={{
-                  position: "absolute",
-                  bottom: "-12px",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  width: 0,
-                  height: 0,
-                  borderLeft: "12px solid transparent",
-                  borderRight: "12px solid transparent",
-                  borderTop: "12px solid rgba(255, 255, 255, 0.95)",
+                  width: w,
+                  height: h,
+                  filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.28))",
                 }}
-              />
-            </div>
+              >
+                {p.outfitObj ? (
+                  <OutfitStage outfit={p.outfitObj} width={w} height={h} nameMaps={NAME_MAPS} />
+                ) : (
+                  <div style={{ opacity: 0.8 }}>No outfit</div>
+                )}
+              </div>
 
-            <div
-              style={{
-                position: "relative",
-                width: "220px",
-                height: "350px",
-                margin: "0 auto",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <img
-                src={assistantImg}
-                alt="Fashion Assistant"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "contain",
-                  filter: "drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3))",
-                }}
-              />
+              <div className="result-badge" title={p.addr}>
+                <b>#{i + 1}</b> {name} • {avg.toFixed(2)}★
+              </div>
             </div>
+          );
+        })}
+      </div>
 
-            <div
-              className="silhouette-inner"
-              style={{
-                marginTop: "20px",
-                opacity: "0.7",
-                fontSize: "12px",
-                textAlign: "center",
-              }}
-            >
-              Runway ready
+      {/* RESULTS (middle) */}
+      <div style={{ position: "relative", zIndex: 3, padding: "0 20px", marginTop: 12 }}>
+        <div className="result-card">
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <h2 style={{ margin: 0 }}>Results</h2>
+            <button className="btn outline small" onClick={() => navigate("/")}>
+              Back to Start
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+            <div>
+              <b>Room:</b> {shortenAddress(roomId)}
+            </div>
+            <div>
+              <b>Topic:</b> {TOPICS?.[topicId] ?? `Topic #${topicId}`}
+            </div>
+            <div>
+              <b>Final pot (on-chain):</b> {formatUnits(finalPot, tokenDecimals)} {tokenSymbol}
+            </div>
+            <div>
+              <b>Payout per winner:</b> {formatUnits(payoutPerWinner, tokenDecimals)} {tokenSymbol}
             </div>
           </div>
+
+          <div style={{ marginTop: 10, opacity: 0.9, fontSize: 13 }}>
+            Winners from contract:{" "}
+            {winners?.length ? winners.map(shortenAddress).join(", ") : "— (not finalized yet)"}
+          </div>
+
+          {status && (
+            <div className="status-bar" style={{ marginTop: 12 }}>
+              {status}
+            </div>
+          )}
         </div>
-      </main>
+      </div>
+
+      {/* LEADERBOARD (bottom) */}
+      <div style={{ position: "relative", zIndex: 3, padding: "16px 20px 24px" }}>
+        <div className="result-card result-leaderboard">
+          <h3 style={{ marginTop: 0 }}>Leaderboard (computed from totalStars/voteCount)</h3>
+
+          {rows.length === 0 ? (
+            <div style={{ opacity: 0.85 }}>No submitted outfits yet, or voting not happened.</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ textAlign: "left", opacity: 0.9 }}>
+                    <th style={{ padding: "10px 8px" }}>Rank</th>
+                    <th style={{ padding: "10px 8px" }}>Player</th>
+                    <th style={{ padding: "10px 8px" }}>Avg ★</th>
+                    <th style={{ padding: "10px 8px" }}>Total stars</th>
+                    <th style={{ padding: "10px 8px" }}>Votes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, idx) => {
+                    const name = loadPlayerName(r.addr) || shortenAddress(r.addr);
+                    const avg = r.voteCount > 0n ? Number(r.avgScaled) / 1_000_000 : 0;
+                    const isWinner = winners?.some((w) => w.toLowerCase() === r.addr.toLowerCase());
+
+                    return (
+                      <tr key={r.addr} style={{ borderTop: "1px solid rgba(0,0,0,0.10)" }}>
+                        <td style={{ padding: "10px 8px" }}>{idx + 1}</td>
+                        <td style={{ padding: "10px 8px" }}>
+                          {name} {isWinner ? <span style={{ marginLeft: 8 }}>🏆</span> : null}
+                        </td>
+                        <td style={{ padding: "10px 8px" }}>{avg.toFixed(2)}</td>
+                        <td style={{ padding: "10px 8px" }}>{r.totalStars.toString()}</td>
+                        <td style={{ padding: "10px 8px" }}>{r.voteCount.toString()}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
