@@ -55,7 +55,7 @@ const PODIUM_POS = [
   { left: "31%", top: "65%", scale: 1.0 },  // 2nd
   { left: "69%", top: "75%", scale: 1.0 },  // 3rd
 ];
-const PODIUM_SHIFT_Y = "clamp(70px, 10vh, 130px)";
+const PODIUM_SHIFT_Y = "clamp(100px, 10vh, 130px)";
 
 export default function Result_Page() {
   const { roomId } = useParams();
