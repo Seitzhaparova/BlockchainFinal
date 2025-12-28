@@ -34,7 +34,6 @@ const FALLBACK_TOPICS = [
   "Y2K ICON",
   "DARK ELEGANCE",
   "STUDY DATE AT THE LIBRARY",
-  "BRUNCH AT THE CITY MALL",
 ];
 
 function pickRandom(arr) {
@@ -50,20 +49,18 @@ function isZeroAddress(a) {
   );
 }
 
-function toNum(x, fallback = 0) {
+function toNumSafe(x, fallback = 0) {
   try {
     if (x == null) return fallback;
     if (typeof x === "number") return Number.isFinite(x) ? x : fallback;
     if (typeof x === "bigint") {
-      // avoid crashing if it is huge
-      const n = Number(x);
-      return Number.isFinite(n) ? n : fallback;
+      if (x > BigInt(Number.MAX_SAFE_INTEGER)) return fallback;
+      return Number(x);
     }
     if (typeof x === "string") {
       const n = Number(x);
       return Number.isFinite(n) ? n : fallback;
     }
-    if (Array.isArray(x) && x.length === 1) return toNum(x[0], fallback);
     return fallback;
   } catch {
     return fallback;
@@ -71,13 +68,11 @@ function toNum(x, fallback = 0) {
 }
 
 function getTopicTextFromId(topicIdNum) {
-  // 1) if your topics.js has a function
   if (typeof Topics.getTopicText === "function") {
     const t = Topics.getTopicText(topicIdNum);
     if (t) return t;
   }
 
-  // 2) if it exports arrays/maps
   const arr =
     Topics.TOPICS ||
     Topics.GAME_TOPICS ||
@@ -90,25 +85,28 @@ function getTopicTextFromId(topicIdNum) {
   const map = Topics.TOPIC_MAP || Topics.topicMap || null;
   if (map && map[topicIdNum]) return map[topicIdNum];
 
-  // 3) fallback
   if (FALLBACK_TOPICS[topicIdNum]) return FALLBACK_TOPICS[topicIdNum];
   return topicIdNum >= 0 ? `Topic #${topicIdNum}` : "—";
 }
 
-function parseRevertMessage(e) {
-  // ethers v6 often puts the useful part into shortMessage/message
-  const msg =
+function extractRevertReason(e) {
+  // Best effort across MetaMask + ethers v6
+  const raw =
     e?.shortMessage ||
     e?.reason ||
+    e?.info?.error?.message ||
+    e?.error?.message ||
+    e?.data?.message ||
     e?.message ||
     "Transaction failed.";
-  // keep it readable
-  return String(msg).replace("execution reverted:", "Reverted:");
+
+  // Clean common prefix
+  return String(raw).replace("execution reverted:", "Reverted:").trim();
 }
 
 export default function GameLobby() {
   const navigate = useNavigate();
-  const { roomId } = useParams(); // room contract address
+  const { roomId } = useParams();
 
   const [account, setAccount] = useState(null);
   const [status, setStatus] = useState("");
@@ -121,16 +119,14 @@ export default function GameLobby() {
   const [betHuman, setBetHuman] = useState("—");
   const [betRaw, setBetRaw] = useState(null);
 
-  const [tokenAddr, setTokenAddr] = useState(null);
-  const [bankAddr, setBankAddr] = useState(null);
+  // on-chain
+  const [playersOnChain, setPlayersOnChain] = useState([]); // exactly getPlayers()
+  const [hostJoined, setHostJoined] = useState(false);
+  const [youJoined, setYouJoined] = useState(false);
 
-  const [onChainPlayers, setOnChainPlayers] = useState([]); // players[] from contract
-  const [players, setPlayers] = useState([]); // UI slots (host first + others)
-  const [joinedMe, setJoinedMe] = useState(false);
-  const [joinedHost, setJoinedHost] = useState(false);
-
+  // chat
   const [chatInput, setChatInput] = useState("");
-  const [chatByAddr, setChatByAddr] = useState({}); // { addrLower: {text, until} }
+  const [chatByAddr, setChatByAddr] = useState({});
 
   // stable avatar per address
   const avatarRef = useRef(new Map());
@@ -211,68 +207,57 @@ export default function GameLobby() {
         const provider = await getProvider();
         const room = getRoom(roomId, provider);
 
-        // read base info (exact ABI names)
         const host = await room.host();
-        const mp = Math.max(2, toNum(await room.maxPlayers(), 2));
-        const ph = toNum(await room.phase(), 0);
-        const topicId = toNum(await room.topicId(), -1);
+        const mp = toNumSafe(await room.maxPlayers(), 2);
+        const ph = toNumSafe(await room.phase(), 0);
+        const topicId = toNumSafe(await room.topicId(), -1);
         const bet = await room.betAmount();
-        const rawPlayers = await room.getPlayers(); // address[]
 
-        // optional getters (only if ABI contains them)
-        let detectedToken = null;
-        let detectedBank = null;
-        try {
-          if (typeof room.token === "function") detectedToken = await room.token();
-        } catch {}
-        try {
-          if (typeof room.bank === "function") detectedBank = await room.bank();
-        } catch {}
-
-        const chainPlayers = Array.isArray(rawPlayers)
+        const rawPlayers = await room.getPlayers(); // joined players only
+        const cleanPlayers = Array.isArray(rawPlayers)
           ? rawPlayers.filter((a) => !isZeroAddress(a))
           : [];
 
-        // joined flags (needs joined(address) in ABI)
-        let meJoined = false;
-        let hostJoined = false;
-        try {
-          if (account && typeof room.joined === "function") {
-            meJoined = await room.joined(account);
-          }
-        } catch {}
-        try {
-          if (host && !isZeroAddress(host) && typeof room.joined === "function") {
-            hostJoined = await room.joined(host);
-          }
-        } catch {}
+        // joined flags (IMPORTANT)
+        const hj =
+          host && !isZeroAddress(host) && typeof room.joined === "function"
+            ? await room.joined(host)
+            : false;
+
+        const yj =
+          account && typeof room.joined === "function"
+            ? await room.joined(account)
+            : false;
 
         if (stop) return;
 
         setRoomHost(host && !isZeroAddress(host) ? host : "—");
-        setMaxPlayers(mp);
+        setMaxPlayers(Math.max(2, mp));
         setPhase(ph);
         setBetRaw(bet);
-        setOnChainPlayers(chainPlayers);
-        setJoinedMe(!!meJoined);
-        setJoinedHost(!!hostJoined);
+        setPlayersOnChain(cleanPlayers);
+        setHostJoined(!!hj);
+        setYouJoined(!!yj);
 
-        if (detectedToken && !isZeroAddress(detectedToken)) setTokenAddr(detectedToken);
-        if (detectedBank && !isZeroAddress(detectedBank)) setBankAddr(detectedBank);
-
-        // topic mapping ✅
         setRoomTopic(getTopicTextFromId(topicId));
 
         // bet display
         try {
           let decimals = tokenDecimalsRef.current;
           if (decimals == null) {
-            // prefer env token
-            const { token } = getAddresses();
-            const tokenToUse = detectedToken && !isZeroAddress(detectedToken) ? detectedToken : token;
-            if (tokenToUse) {
-              const t = getToken(tokenToUse, provider);
-              decimals = toNum(await t.decimals(), 18);
+            // Prefer token() from room (most correct), else env token
+            let tokenAddr = null;
+            if (typeof room.token === "function") {
+              tokenAddr = await room.token();
+            }
+            if (!tokenAddr || isZeroAddress(tokenAddr)) {
+              const { token } = getAddresses();
+              tokenAddr = token;
+            }
+
+            if (tokenAddr) {
+              const t = getToken(tokenAddr, provider);
+              decimals = toNumSafe(await t.decimals(), 18);
             } else {
               decimals = 18;
             }
@@ -283,31 +268,6 @@ export default function GameLobby() {
           setBetHuman(String(bet));
         }
 
-        // ---- Build UI slots ----
-        // IMPORTANT: contract players[] may NOT include host unless host called joinGame().
-        // We still render host in the first card, but we show real on-chain joined count separately.
-        const normalized = [];
-        if (host && !isZeroAddress(host)) normalized.push(host);
-        for (const a of chainPlayers) {
-          if (normalized.some((x) => x.toLowerCase() === a.toLowerCase())) continue;
-          normalized.push(a);
-        }
-
-        const slots = new Array(mp).fill(null).map((_, i) => {
-          const addr = normalized[i] ?? null;
-          const filled = !!addr;
-          const role =
-            filled && host && addr.toLowerCase() === host.toLowerCase()
-              ? "HOST"
-              : filled
-              ? "PLAYER"
-              : "EMPTY";
-          return { address: filled ? addr : null, role };
-        });
-
-        setPlayers(slots);
-
-        // clear load error
         setStatus((s) =>
           s.startsWith("Failed to load room state") ? "" : s
         );
@@ -327,7 +287,7 @@ export default function GameLobby() {
     };
   }, [roomId, account]);
 
-  // phase routing
+  // phase routing (ONLY based on on-chain phase)
   useEffect(() => {
     if (!roomId) return;
     if (phase === 1) navigate(`/active/${roomId}`, { replace: true });
@@ -421,7 +381,7 @@ export default function GameLobby() {
     }
   }
 
-  const onChainCount = onChainPlayers.length;
+  const onChainCount = playersOnChain.length;
 
   const isHost = useMemo(() => {
     if (!account || !roomHost || roomHost === "—") return false;
@@ -445,48 +405,63 @@ export default function GameLobby() {
     if (!account) return setStatus("Connect wallet first.");
 
     try {
-      setStatus("Joining… confirm in MetaMask.");
+      setStatus("Preparing join…");
 
       const signer = await getSigner();
       const room = getRoom(roomId, signer);
 
-      // detect bank (spender) — REQUIRED for your current GameRoom.sol design
-      let bank = bankAddr;
-      try {
-        if (!bank && typeof room.bank === "function") bank = await room.bank();
-      } catch {}
-      if (!bank || isZeroAddress(bank)) {
-        return setStatus(
-          "Cannot detect BANK address. Add `function bank() view returns (address)` to GAME_ROOM_ABI or expose it in your ABI."
-        );
-      }
-
-      // detect token address
-      const { token: tokenEnv } = getAddresses();
-      let tokenToUse = tokenAddr || tokenEnv;
-      try {
-        if ((!tokenToUse || isZeroAddress(tokenToUse)) && typeof room.token === "function") {
-          tokenToUse = await room.token();
+      // If already joined, don't even try tx (prevents estimateGas revert)
+      if (typeof room.joined === "function") {
+        const already = await room.joined(account);
+        if (already) {
+          setStatus("Already joined ✅");
+          await loadRoomRef.current?.();
+          return;
         }
-      } catch {}
-      if (!tokenToUse || isZeroAddress(tokenToUse)) {
-        return setStatus("Cannot detect token address for approvals.");
       }
 
-      const t = getToken(tokenToUse, signer);
+      // Find BANK spender (most important)
+      let bankAddr = null;
+      if (typeof room.bank === "function") {
+        bankAddr = await room.bank();
+      }
+      if (!bankAddr || isZeroAddress(bankAddr)) {
+        // If your ABI doesn't have bank(), you must add it.
+        throw new Error("Room ABI missing bank() or bank address is zero.");
+      }
 
-      const bet = betRaw ?? (await room.betAmount());
+      // Approve DCT to BANK (not to room!)
+      let tokenAddr = null;
+      if (typeof room.token === "function") {
+        tokenAddr = await room.token();
+      }
+      if (!tokenAddr || isZeroAddress(tokenAddr)) {
+        const { token } = getAddresses();
+        tokenAddr = token;
+      }
+      if (!tokenAddr || isZeroAddress(tokenAddr)) {
+        throw new Error("Token address missing (room.token() and VITE_TOKEN_ADDRESS are empty).");
+      }
 
-      // approve BANK (spender) if needed
+      if (betRaw == null) throw new Error("Bet not loaded yet. Wait 1–2 seconds and retry.");
+
+      const t = getToken(tokenAddr, signer);
+
       if (typeof t.allowance === "function" && typeof t.approve === "function") {
-        const allowance = await t.allowance(account, bank);
-        if (allowance < bet) {
-          setStatus("Approving DCT for bank… confirm in MetaMask.");
-          const txA = await t.approve(bank, bet);
+        const allowance = await t.allowance(account, bankAddr);
+        if (allowance < betRaw) {
+          setStatus("Approving DCT to Bank… confirm in MetaMask.");
+          const txA = await t.approve(bankAddr, betRaw);
           await txA.wait();
         }
       }
 
+      // Optional: simulate first to get revert reason without wasting clicks
+      if (room.joinGame?.staticCall) {
+        await room.joinGame.staticCall();
+      }
+
+      setStatus("Joining… confirm in MetaMask.");
       const tx = await room.joinGame();
       await tx.wait();
 
@@ -494,70 +469,75 @@ export default function GameLobby() {
       await loadRoomRef.current?.();
     } catch (e) {
       console.error(e);
-      setStatus(parseRevertMessage(e));
+      setStatus(extractRevertReason(e));
     }
   }
 
+  // ✅ START: simulate first; do not navigate manually (phase polling will route)
   async function handleStartGame() {
     if (!account) return setStatus("Connect wallet first.");
     if (!isHost) return setStatus("Only host can start.");
     if (!roomId) return setStatus("Room address missing.");
 
     try {
-      setStatus("Checking start conditions…");
-
       const signer = await getSigner();
       const room = getRoom(roomId, signer);
 
-      // refresh on-chain truth right before starting
-      const rawPlayers = await room.getPlayers();
-      const chainPlayers = Array.isArray(rawPlayers)
-        ? rawPlayers.filter((a) => !isZeroAddress(a))
-        : [];
-      const chainCount = chainPlayers.length;
-
-      // host must be JOINED on-chain (constructor does NOT auto-join host)
-      let hostJoinedNow = false;
-      try {
-        if (roomHost && roomHost !== "—" && typeof room.joined === "function") {
-          hostJoinedNow = await room.joined(roomHost);
+      // Helpful: if host is not joined on-chain, start may revert depending on your contract version
+      if (typeof room.joined === "function") {
+        const hj = await room.joined(account);
+        if (!hj) {
+          setStatus("Host must JOIN GAME first (pay bet) before starting.");
+          return;
         }
-      } catch {}
-
-      if (!hostJoinedNow) {
-        setStatus("Host is NOT joined on-chain yet. Click JOIN GAME first (host must pay bet too).");
-        return;
       }
 
-      // Your deployed contract clearly reverts with “Need 2+ players”,
-      // so we enforce that here to avoid MetaMask “missing revert data”.
-      if (chainCount < 2) {
-        setStatus(`Need 2+ on-chain players. Currently joined on-chain: ${chainCount}.`);
-        return;
-      }
-
-      // preflight: get readable revert (if any)
-      try {
-        if (typeof room.startGame?.staticCall === "function") {
-          await room.startGame.staticCall();
-        }
-      } catch (e) {
-        setStatus(parseRevertMessage(e));
-        return;
+      // Simulate to get exact revert reason in UI (prevents silent estimateGas failure)
+      if (room.startGame?.staticCall) {
+        await room.startGame.staticCall();
       }
 
       setStatus("Starting… confirm in MetaMask.");
       const tx = await room.startGame();
       await tx.wait();
 
-      setStatus("Game started ✅ (waiting phase update)");
-      // phase polling will redirect automatically when phase becomes Styling
-      await loadRoomRef.current?.();
+      setStatus("Game started ✅");
+      await loadRoomRef.current?.(); // polling will route you
     } catch (e) {
       console.error(e);
-      setStatus(parseRevertMessage(e));
+      setStatus(extractRevertReason(e));
     }
   }
+
+  // Build slots for UI (HOST shown even if not joined)
+  const slots = useMemo(() => {
+    const mp = Math.max(2, maxPlayers);
+    const host = roomHost && roomHost !== "—" ? roomHost : null;
+
+    const hostLower = host ? host.toLowerCase() : null;
+    const others = (playersOnChain || []).filter(
+      (a) => a && !isZeroAddress(a) && (!hostLower || a.toLowerCase() !== hostLower)
+    );
+
+    const out = [];
+    for (let i = 0; i < mp; i++) {
+      if (i === 0 && host) {
+        out.push({
+          address: host,
+          role: "HOST",
+          joined: hostJoined, // IMPORTANT
+        });
+      } else {
+        const addr = others[i - 1] ?? null;
+        out.push({
+          address: addr,
+          role: addr ? "PLAYER" : "EMPTY",
+          joined: !!addr,
+        });
+      }
+    }
+    return out;
+  }, [maxPlayers, roomHost, playersOnChain, hostJoined]);
 
   return (
     <div className="start-root">
@@ -594,7 +574,6 @@ export default function GameLobby() {
       <main className="lobby-main">
         <div className="lobby-body">
           <section className="lobby-left">
-            {/* top row */}
             <div
               style={{
                 display: "flex",
@@ -623,7 +602,6 @@ export default function GameLobby() {
               </div>
             </div>
 
-            {/* meta */}
             <div className="lobby-meta">
               <div className="lobby-pillbox">
                 <div className="lobby-pilllabel">GAME ROOM</div>
@@ -635,11 +613,7 @@ export default function GameLobby() {
                 </div>
                 <div className="lobby-pillhint">
                   Host: {roomHost === "—" ? "—" : shortenAddress(roomHost)}
-                  {roomHost !== "—" && (
-                    <span style={{ marginLeft: 8, opacity: 0.8 }}>
-                      {joinedHost ? "(joined)" : "(NOT joined)"}
-                    </span>
-                  )}
+                  {roomHost !== "—" && !hostJoined ? " (NOT joined)" : ""}
                 </div>
               </div>
 
@@ -651,13 +625,11 @@ export default function GameLobby() {
               <div className="lobby-pillbox">
                 <div className="lobby-pilllabel">NUMBER OF PLAYERS</div>
                 <div className="lobby-pillvalue">
-                  {/* IMPORTANT: show on-chain players[] count */}
                   {onChainCount} / {maxPlayers}
                 </div>
               </div>
             </div>
 
-            {/* bet / phase */}
             <div style={{ marginTop: 10, opacity: 0.9 }}>
               <div style={{ fontSize: 12 }}>
                 <strong>Bet:</strong> {betHuman} DCT
@@ -667,15 +639,29 @@ export default function GameLobby() {
               </div>
             </div>
 
-            {/* players grid (big avatars) */}
             <div className="lobby-players" style={{ marginTop: 16 }}>
-              {players.map((p, idx) => {
+              {slots.map((p, idx) => {
                 const filled = !!p.address;
                 const you =
-                  account && p.address && p.address.toLowerCase() === account.toLowerCase();
+                  account &&
+                  p.address &&
+                  p.address.toLowerCase() === account.toLowerCase();
 
-                const badge = p.role === "HOST" ? "HOST" : filled ? "PLAYER" : "EMPTY";
-                const displayName = filled ? (you ? "You" : shortenAddress(p.address)) : "Waiting…";
+                const badge =
+                  p.role === "HOST"
+                    ? "HOST"
+                    : filled
+                    ? "PLAYER"
+                    : "EMPTY";
+
+                const displayName = !filled
+                  ? "Waiting…"
+                  : you
+                  ? "You"
+                  : shortenAddress(p.address);
+
+                const note =
+                  p.role === "HOST" && filled && !p.joined ? "Not joined" : null;
 
                 const chat = filled ? chatByAddr[p.address.toLowerCase()] : null;
                 const showChat = !!chat?.text && chat.until > Date.now();
@@ -695,6 +681,7 @@ export default function GameLobby() {
                       alignItems: "center",
                       justifyContent: "flex-end",
                       paddingTop: 18,
+                      opacity: filled && p.role === "HOST" && !p.joined ? 0.55 : 1,
                     }}
                   >
                     {showChat && (
@@ -747,6 +734,7 @@ export default function GameLobby() {
                       <div className="bubble-title">
                         {badge}
                         {you ? " • YOU" : ""}
+                        {note ? ` • ${note}` : ""}
                       </div>
                       <div className="bubble-text">{displayName}</div>
                     </div>
@@ -755,23 +743,21 @@ export default function GameLobby() {
               })}
             </div>
 
-            {/* actions */}
             <div className="lobby-actions" style={{ gap: 10 }}>
-              {/* JOIN button (tx) — uses joinedMe from chain, so host can join too */}
-              {account && phase === 0 && !joinedMe && (
+              {/* JOIN is purely from on-chain joined() */}
+              {account && phase === 0 && !youJoined && (
                 <button className="btn outline" onClick={handleJoinGame}>
                   JOIN GAME
                 </button>
               )}
 
-              {/* START button */}
               {isHost && (
                 <button className="btn primary" onClick={handleStartGame}>
                   START GAME
                 </button>
               )}
 
-              {!isHost && account && joinedMe && (
+              {!isHost && account && youJoined && (
                 <div className="lobby-note">Waiting for host to start…</div>
               )}
             </div>
