@@ -1125,3 +1125,80 @@ body,
   max-width: 100%;
   height: auto;
 }
+
+/* =========================
+   VOTING PAGE — READABILITY FIX
+   (paste at end of main_page.css)
+   ========================= */
+
+/* Make the top row layout nicer: left text + right buttons */
+.voting-top {
+  grid-template-columns: 1fr auto;
+  gap: 18px;
+  align-items: center;
+}
+
+/* Force dark readable text inside voting areas (they sit on light cards) */
+.voting-top,
+.voting-top h2,
+.voting-instructions,
+.voting-players {
+  color: rgba(36, 12, 58, 0.92);
+}
+
+/* Muted text inside voting cards */
+.voting-top div,
+.voting-instructions,
+.voting-players {
+  color: rgba(36, 12, 58, 0.78);
+}
+
+.voting-top b,
+.voting-instructions b,
+.voting-players b {
+  color: rgba(36, 12, 58, 0.95);
+}
+
+/* Make voting containers match Lobby/Active “light glass” look */
+.voting-instructions,
+.voting-players {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* IMPORTANT: outline buttons are white-text globally.
+   In Voting they must be dark, otherwise stars + "wallet connected" become invisible. */
+.voting-top .btn.outline,
+.voting-instructions .btn.outline,
+.voting-players .btn.outline {
+  color: rgba(36, 12, 58, 0.92);
+  border: 1px solid rgba(36, 12, 58, 0.18);
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.voting-top .btn.outline:hover,
+.voting-instructions .btn.outline:hover,
+.voting-players .btn.outline:hover {
+  background: rgba(255, 77, 166, 0.10);
+  border-color: rgba(255, 77, 166, 0.35);
+}
+
+/* Make the big "Voting" title pop a bit */
+.voting-top h2 {
+  font-size: 28px;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+/* Optional: give each player row a nicer shadow */
+.voting-players > div {
+  box-shadow: 0 10px 24px rgba(33, 7, 58, 0.10);
+}
+
+/* Better mobile behavior */
+@media (max-width: 980px) {
+  .voting-top {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+}
