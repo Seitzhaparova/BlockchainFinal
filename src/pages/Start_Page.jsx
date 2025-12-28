@@ -6,7 +6,13 @@ import "../main_page.css";
 import { formatUnits, parseEther, parseUnits, isAddress } from "ethers";
 import { connectWallet, getProvider, getSigner } from "../web3/eth";
 import { TOPICS } from "../web3/topics";
-import { assertAddresses, getAddresses, getFactory, getToken, getTokenSale } from "../web3/contracts";
+import {
+  assertAddresses,
+  getAddresses,
+  getFactory,
+  getToken,
+  getTokenSale,
+} from "../web3/contracts";
 
 function shortenAddress(address) {
   if (!address) return "";
@@ -36,7 +42,11 @@ export default function Start_Page() {
 
   const [recentRooms, setRecentRooms] = useState([]);
 
-  const { token: TOKEN_ADDR, sale: SALE_ADDR, factory: FACTORY_ADDR } = getAddresses();
+  const {
+    token: TOKEN_ADDR,
+    sale: SALE_ADDR,
+    factory: FACTORY_ADDR,
+  } = getAddresses();
   const hasConfig = useMemo(() => {
     try {
       assertAddresses();
@@ -127,7 +137,8 @@ export default function Start_Page() {
 
     const ethStr = String(ethToSpend).replace(",", ".").trim();
     const ethNum = Number(ethStr);
-    if (!Number.isFinite(ethNum) || ethNum <= 0) return setStatus("Enter ETH amount > 0");
+    if (!Number.isFinite(ethNum) || ethNum <= 0)
+      return setStatus("Enter ETH amount > 0");
 
     try {
       setStatus("Buying tokens... confirm MetaMask");
@@ -142,7 +153,9 @@ export default function Start_Page() {
       await refresh();
     } catch (e) {
       console.error(e);
-      setStatus("Buy failed. Check Sepolia ETH + TokenSale funded with tokens.");
+      setStatus(
+        "Buy failed. Check Sepolia ETH + TokenSale funded with tokens."
+      );
     }
   }
 
@@ -178,7 +191,9 @@ export default function Start_Page() {
       }
 
       if (!roomAddr || !isAddress(roomAddr)) {
-        setStatus("Game created, but room address not detected. (Event parsing issue)");
+        setStatus(
+          "Game created, but room address not detected. (Event parsing issue)"
+        );
         return;
       }
 
@@ -197,7 +212,7 @@ export default function Start_Page() {
     pushRecent(id);
     navigate(`/lobby/${id}`);
   }
-
+  
   return (
     <div className="start-root">
       <div className="glow-circle glow-1" />
@@ -231,7 +246,8 @@ export default function Start_Page() {
 
           {!hasConfig && (
             <div className="status-bar">
-              ⚠️ Add deployed addresses into <b>.env</b>: VITE_TOKEN_ADDRESS / VITE_TOKEN_SALE_ADDRESS / VITE_GAME_FACTORY_ADDRESS
+              ⚠️ Add deployed addresses into <b>.env</b>: VITE_TOKEN_ADDRESS /
+              VITE_TOKEN_SALE_ADDRESS / VITE_GAME_FACTORY_ADDRESS
             </div>
           )}
 
@@ -242,7 +258,9 @@ export default function Start_Page() {
           <div className="buy-section">
             <div className="buy-label">
               Buy tokens with ETH{" "}
-              {tokensPerEth ? `(rate: ${formatUnits(tokensPerEth, 18)} DCT / 1 ETH)` : ""}
+              {tokensPerEth
+                ? `(rate: ${formatUnits(tokensPerEth, 18)} DCT / 1 ETH)`
+                : ""}
             </div>
             <div className="buy-row">
               <input
@@ -280,7 +298,15 @@ export default function Start_Page() {
               </button>
             </div>
 
-            <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div
+              style={{
+                marginTop: 10,
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
               <label style={{ fontSize: 12, opacity: 0.85 }}>
                 <input
                   type="radio"
@@ -359,6 +385,114 @@ export default function Start_Page() {
           )}
 
           {status && <div className="status-bar">{status}</div>}
+        </div>
+
+        {/* ДОБАВЛЕННАЯ ПРАВАЯ КОЛОНКА С ДЕВУШКОЙ */}
+        <div className="start-side">
+          <div className="side-silhouette">
+            {/* Speech bubble */}
+            <div
+              style={{
+                position: "relative",
+                background: "rgba(255, 255, 255, 0.95)",
+                borderRadius: "16px",
+                padding: "16px 20px",
+                maxWidth: "280px",
+                margin: "0 auto 25px",
+                border: "2px solid rgba(255, 77, 166, 0.3)",
+                boxShadow: "0 10px 30px rgba(0, 0, 0, 0.2)",
+                color: "#240C3A",
+                fontSize: "14px",
+                lineHeight: "1.4",
+                textAlign: "center",
+                zIndex: 2,
+              }}
+            >
+              {!account ? (
+                <>
+                  <div
+                    style={{
+                      fontWeight: "bold",
+                      marginBottom: "8px",
+                      color: "#ff4da6",
+                    }}
+                  >
+                    👋 Welcome, fashionista!
+                  </div>
+                  <div>
+                    To start the game, connect your MetaMask crypto wallet!
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      fontWeight: "bold",
+                      marginBottom: "8px",
+                      color: "#ff4da6",
+                    }}
+                  >
+                    🎉 Awesome!
+                  </div>
+                  <div>
+                    Ready to walk the blockchain runway? Create a game or join an existing one!
+                  </div>
+                </>
+              )}
+
+              {/* Bubble tail */}
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "-12px",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  width: "0",
+                  height: "0",
+                  borderLeft: "12px solid transparent",
+                  borderRight: "12px solid transparent",
+                  borderTop: "12px solid rgba(255, 255, 255, 0.95)",
+                }}
+              />
+            </div>
+
+            {/* Картинка девушки */}
+            <div
+              style={{
+                position: "relative",
+                width: "220px",
+                height: "350px",
+                margin: "0 auto",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <img
+                src="src/assets/characters/girl1.png"
+                alt="Fashion Assistant"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  filter: "drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3))",
+                }}
+              />
+            </div>
+
+            {/* Decorative text */}
+            <div
+              className="silhouette-inner"
+              style={{ 
+                marginTop: "20px", 
+                opacity: "0.7",
+                fontSize: "12px",
+                textAlign: "center"
+              }}
+            >
+              Runway ready
+            </div>
+          </div>
         </div>
       </main>
     </div>

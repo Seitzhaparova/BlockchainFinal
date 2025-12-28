@@ -36,7 +36,6 @@ body {
   overflow-y: visible;
 }
 
-
 .glow-circle {
   position: absolute;
   border-radius: 999px;
@@ -171,8 +170,8 @@ body {
   font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  transition: transform 0.12s ease, box-shadow 0.12s ease,
-    background 0.12s ease, color 0.12s ease;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease,
+    color 0.12s ease;
 }
 
 .btn.primary {
@@ -275,16 +274,16 @@ body {
   margin-top: 10px;
   padding-top: 8px;
 
-  border-top: 1px solid rgba(0, 0, 0, 0.08);  /* darker divider for light bg */
+  border-top: 1px solid rgba(0, 0, 0, 0.08); /* darker divider for light bg */
   font-size: 12px;
 
-  color: rgba(36, 12, 58, 0.72);              /* ✅ readable on light bg */
+  color: rgba(36, 12, 58, 0.72); /* ✅ readable on light bg */
 }
 
 /* Override = for DARK panels (Start page card) */
 .start-card .status-bar {
-  border-top: 1px solid rgba(255, 255, 255, 0.10);
-  color: var(--text-muted);                    /* ✅ readable on dark bg */
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted); /* ✅ readable on dark bg */
 }
 
 /* Optional helper class if you want messages not tied to status-bar */
@@ -439,9 +438,8 @@ body {
 html,
 body,
 #root {
-     min-height: 100%;
-   }
-   
+  min-height: 100%;
+}
 
 .lobby-main {
   position: relative;
@@ -643,7 +641,7 @@ body,
 .active-topicBubble {
   border-radius: 18px;
   padding: 12px 14px;
-  background: rgba(255, 155, 227, 0.20);
+  background: rgba(255, 155, 227, 0.2);
   border: 1px solid rgba(0, 0, 0, 0.06);
   color: rgba(36, 12, 58, 0.92);
 }
@@ -674,7 +672,7 @@ body,
   width: 160px;
   height: 260px;
   border-radius: 30px;
-  background: rgba(255, 77, 166, 0.70);
+  background: rgba(255, 77, 166, 0.7);
   position: relative;
 }
 
@@ -688,7 +686,7 @@ body,
   width: 70px;
   height: 70px;
   border-radius: 999px;
-  background: rgba(255, 77, 166, 0.70);
+  background: rgba(255, 77, 166, 0.7);
 }
 
 .active-miniProfile {
@@ -750,7 +748,11 @@ body,
   position: absolute;
   inset: 0;
   border-radius: 18px;
-  background: radial-gradient(circle at 20% 0%, rgba(255, 233, 163, 0.55), rgba(36, 12, 58, 0.22));
+  background: radial-gradient(
+    circle at 20% 0%,
+    rgba(255, 233, 163, 0.55),
+    rgba(36, 12, 58, 0.22)
+  );
   border: 1px dashed rgba(36, 12, 58, 0.25);
 }
 
@@ -773,7 +775,7 @@ body,
   width: 58px;
   height: 58px;
   border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.10);
+  border: 1px solid rgba(0, 0, 0, 0.1);
   background: rgba(255, 255, 255, 0.75);
   cursor: pointer;
   display: grid;
@@ -854,7 +856,6 @@ body,
   font-size: 12px;
   word-break: break-word;
 }
-
 
 /* Optional: keep player cards from becoming super tall */
 .lobby-players .avatar-card {
@@ -1022,9 +1023,15 @@ body,
 
 /* Анимация пульсации */
 @keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.7; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 .pulse {
@@ -1046,7 +1053,7 @@ body,
 }
 
 .avatar-card.bot .bubble-title {
-  color: #8B4513;
+  color: #8b4513;
 }
 
 .avatar-card.bot .avatar-placeholder {
@@ -1060,9 +1067,9 @@ body,
   gap: 8px;
   padding: 10px 16px;
   border-radius: 999px;
-  border: 2px solid #8B4513;
+  border: 2px solid #8b4513;
   background: rgba(139, 69, 19, 0.1);
-  color: #8B4513;
+  color: #8b4513;
   font-weight: bold;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1086,7 +1093,11 @@ body,
   gap: 8px;
   padding: 8px 12px;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(139, 69, 19, 0.1));
+  background: linear-gradient(
+    135deg,
+    rgba(255, 215, 0, 0.1),
+    rgba(139, 69, 19, 0.1)
+  );
   border: 1px solid rgba(139, 69, 19, 0.3);
   margin-top: 10px;
 }
@@ -1097,7 +1108,7 @@ body,
 
 .bot-mode-indicator .text {
   font-size: 12px;
-  color: #8B4513;
+  color: #8b4513;
   font-weight: bold;
 }
 
@@ -1179,7 +1190,7 @@ body,
 .voting-top .btn.outline:hover,
 .voting-instructions .btn.outline:hover,
 .voting-players .btn.outline:hover {
-  background: rgba(255, 77, 166, 0.10);
+  background: rgba(255, 77, 166, 0.1);
   border-color: rgba(255, 77, 166, 0.35);
 }
 
@@ -1192,7 +1203,7 @@ body,
 
 /* Optional: give each player row a nicer shadow */
 .voting-players > div {
-  box-shadow: 0 10px 24px rgba(33, 7, 58, 0.10);
+  box-shadow: 0 10px 24px rgba(33, 7, 58, 0.1);
 }
 
 /* Better mobile behavior */
@@ -1269,7 +1280,7 @@ body,
 }
 
 .result-card table tr {
-  border-top: 1px solid rgba(0, 0, 0, 0.10);
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 @media (max-width: 700px) {
@@ -1279,4 +1290,39 @@ body,
   .result-leaderboard {
     margin-top: 420px;
   }
+}
+.start-main {
+  display: flex;
+  gap: 40px;
+  align-items: flex-start;
+  justify-content: space-between;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.start-card {
+  flex: 1;
+  max-width: 600px;
+}
+
+.start-side {
+  flex-shrink: 0;
+  width: 320px;
+  margin-top: 40px;
+}
+
+.side-silhouette {
+  position: relative;
+  background: rgba(20, 10, 40, 0.4);
+  border-radius: 20px;
+  padding: 25px;
+  border: 1px solid rgba(255, 77, 166, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.silhouette-inner {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 300;
+  letter-spacing: 1px;
 }
