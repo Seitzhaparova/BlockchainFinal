@@ -9,13 +9,24 @@ export const ERC20_ABI = [
   "function approve(address spender, uint256 amount) returns (bool)",
 ];
 
+// ✅ ONE export ONLY (and it includes tokensPerEth so Start_Page works)
+export const TOKEN_SALE_ABI = [
+  "function token() view returns (address)",
+  "function tokensPerEth() view returns (uint256)",
+  "function buyTokens() payable",
+  "function sellTokens(uint256 tokenAmount)",
+  "function quoteTokensForEth(uint256 ethWei) view returns (uint256)",
+  "function quoteEthForTokens(uint256 tokenAmount) view returns (uint256)",
+];
+
+// ⚠️ IMPORTANT: your Start_Page uses factory.createGame(...) and listens for "GameCreated"
+// So ABI must match that (if your Solidity uses createRoom/RoomCreated, tell me and I’ll swap)
 export const GAME_FACTORY_ABI = [
-  "function createRoom(uint256 betAmount, uint256 maxPlayers, uint256 topicId) returns (address)",
-  "event RoomCreated(address indexed room, address indexed host, uint256 betAmount, uint256 maxPlayers, uint256 topicId)",
+  "function createGame(uint256 betAmount, uint256 maxPlayers, uint256 topicId) returns (address)",
+  "event GameCreated(address indexed gameAddress, address indexed host, uint256 betAmount, uint256 maxPlayers, uint256 topicId)",
 ];
 
 export const GAME_ROOM_ABI = [
-  // base info
   "function host() view returns (address)",
   "function betAmount() view returns (uint256)",
   "function maxPlayers() view returns (uint256)",
@@ -24,12 +35,9 @@ export const GAME_ROOM_ABI = [
   "function stylingDeadline() view returns (uint256)",
   "function votingDeadline() view returns (uint256)",
   "function getPlayers() view returns (address[])",
-
-  // IMPORTANT: add these getters (they exist because variables are public in Solidity)
   "function bank() view returns (address)",
   "function token() view returns (address)",
 
-  // actions
   "function joinGame()",
   "function startGame()",
   "function submitOutfit(uint256 outfitCode)",
@@ -38,24 +46,13 @@ export const GAME_ROOM_ABI = [
   "function finalize()",
   "function cancelGame()",
 
-  // views
   "function getOutfit(address player) view returns (bool hasOutfit, uint256 outfitCode)",
   "function getWinners() view returns (address[] winners, uint256 finalPot, uint256 payoutPerWinner)",
 
-  // extra public getters (mappings/vars) – used by GUI
   "function joined(address) view returns (bool)",
   "function submitted(address) view returns (bool)",
   "function submittedCount() view returns (uint256)",
   "function hasVoted(address) view returns (bool)",
   "function totalStars(address) view returns (uint256)",
   "function voteCount(address) view returns (uint256)",
-];
-
-const TOKEN_SALE_ABI = [
-  "function token() view returns (address)",
-  "function tokensPerEth() view returns (uint256)",
-  "function buyTokens() payable",
-  "function sellTokens(uint256 tokenAmount)",
-  "function quoteTokensForEth(uint256 ethWei) view returns (uint256)",
-  "function quoteEthForTokens(uint256 tokenAmount) view returns (uint256)",
 ];
