@@ -62,9 +62,9 @@ function avatarForAddress(addr) {
  * (You can tweak these if you want.)
  */
 const PODIUM_POS = [
-  { left: "50%", top: "72%", scale: 1.0 }, // 1st
-  { left: "31%", top: "82%", scale: 0.9 }, // 2nd
-  { left: "69%", top: "84%", scale: 0.9 }, // 3rd
+  { left: "50%", top: "65%", scale: 1.0 }, // 1st
+  { left: "20%", top: "55%", scale: 0.9 }, // 2nd
+  { left: "10%", top: "45%", scale: 0.9 }, // 3rd
 ];
 
 export default function Result_Page() {
