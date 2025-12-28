@@ -50,9 +50,9 @@ function avatarForAddress(addr) {
 
 // tuned for your podium image
 const PODIUM_POS = [
-  { left: "50%", top: "75%", scale: 1.1 }, // 1st
-  { left: "25%", top: "85%", scale: 0.95 }, // 2nd
-  { left: "65%", top: "95%", scale: 0.95 }, // 3rd
+  { left: "50%", top: "90%", scale: 1.1 }, // 1st
+  { left: "25%", top: "95%", scale: 0.95 }, // 2nd
+  { left: "65%", top: "100%", scale: 0.95 }, // 3rd
 ];
 
 export default function Result_Page() {
