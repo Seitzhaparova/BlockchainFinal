@@ -5,16 +5,22 @@ import "../main_page.css";
 
 import { formatUnits } from "ethers";
 import { getProvider } from "../web3/eth.js";
-import { TOPICS } from "../web3/topics.js";
+import { topicText } from "../web3/topics.js";
 import { getAddresses, getRoom, getToken } from "../web3/contracts.js";
 
-// outfit render (same as Voting)
+// ✅ Render real outfits (same as Voting page)
 import OutfitStage from "../components/OutfitStage.jsx";
-import { ASSETS, NAME_MAPS } from "../utils/assetCatalogs.js";
-import { decodeOutfit } from "../utils/outfitCodec.js";
+import { ASSETS, NAME_MAPS } from "../utils/assetCatalogs";
+import { decodeOutfit } from "../utils/outfitCodec";
 
-// background image
+// Background
 import bgImg from "../assets/results/background.png";
+
+// Fallback icons (only if outfit decode fails)
+import girl1 from "../assets/icons_girls/girl1.png";
+import girl2 from "../assets/icons_girls/girl2.png";
+import girl3 from "../assets/icons_girls/girl3.png";
+import girl4 from "../assets/icons_girls/girl4.png";
 
 function shortenAddress(address) {
   if (!address) return "";
@@ -33,11 +39,20 @@ function loadPlayerName(address) {
   return "";
 }
 
-// podium positions (tuned for your stage background)
+const AVATARS = [girl1, girl2, girl3, girl4];
+function avatarForAddress(addr) {
+  const hex = (addr || "").toLowerCase().replace(/^0x/, "");
+  const last2 = hex.slice(-2);
+  const n = parseInt(last2 || "0", 16);
+  const idx = Number.isFinite(n) ? n % AVATARS.length : 0;
+  return AVATARS[idx];
+}
+
+// tuned for your podium image
 const PODIUM_POS = [
-  { left: "50%", top: "78%", scale: 1.12 }, // 1st
-  { left: "34%", top: "84%", scale: 0.96 }, // 2nd
-  { left: "66%", top: "86%", scale: 0.96 }, // 3rd
+  { left: "50%", top: "62%", scale: 1.1 }, // 1st
+  { left: "31%", top: "72%", scale: 0.95 }, // 2nd
+  { left: "69%", top: "76%", scale: 0.95 }, // 3rd
 ];
 
 export default function Result_Page() {
@@ -47,6 +62,7 @@ export default function Result_Page() {
   const assets = ASSETS;
 
   const [status, setStatus] = useState("");
+
   const [topicId, setTopicId] = useState(0);
 
   const [tokenSymbol, setTokenSymbol] = useState("DCT");
@@ -56,7 +72,7 @@ export default function Result_Page() {
   const [payoutPerWinner, setPayoutPerWinner] = useState("0");
   const [winners, setWinners] = useState([]);
 
-  const [rows, setRows] = useState([]); // sorted leaderboard
+  const [rows, setRows] = useState([]);
   const top3 = useMemo(() => rows.slice(0, 3), [rows]);
 
   async function refresh() {
@@ -66,7 +82,7 @@ export default function Result_Page() {
       const provider = await getProvider();
       const room = getRoom(roomId, provider);
 
-      // token address: prefer room.token() (if exists), fallback to env token
+      // token address: prefer room.token(), fallback to env token
       let tokenAddr = null;
       try {
         tokenAddr = await room.token();
@@ -96,7 +112,6 @@ export default function Result_Page() {
       setFinalPot((res?.[1] || 0n).toString());
       setPayoutPerWinner((res?.[2] || 0n).toString());
 
-      // leaderboard from totalStars/voteCount for submitted outfits
       const entries = await Promise.all(
         (Array.isArray(plist) ? plist : []).map(async (p) => {
           const [has, code] = await room.getOutfit(p);
@@ -105,7 +120,6 @@ export default function Result_Page() {
           const [ts, vc] = await Promise.all([room.totalStars(p), room.voteCount(p)]);
           const tsBI = BigInt(ts.toString());
           const vcBI = BigInt(vc.toString());
-
           const avgScaled = vcBI > 0n ? (tsBI * 1_000_000n) / vcBI : 0n;
 
           let outfitObj = null;
@@ -139,19 +153,19 @@ export default function Result_Page() {
       setStatus("");
     } catch (e) {
       console.error(e);
-      setStatus("Failed to load results (wrong room / wrong network / game not ended yet).");
+      setStatus("Failed to load results. (Wrong room / wrong network / game not ended yet)");
     }
   }
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 2500);
+    const t = setInterval(refresh, 3000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
   return (
-    <div className="result-root" style={{ position: "relative", minHeight: "100vh" }}>
+    <div style={{ minHeight: "100vh", position: "relative", overflowX: "hidden" }}>
       {/* background */}
       <img
         src={bgImg}
@@ -169,83 +183,104 @@ export default function Result_Page() {
       />
 
       {/* header */}
-      <div style={{ position: "relative", zIndex: 3, padding: "18px 20px 0" }}>
-        <div className="brand" style={{ marginBottom: 12 }}>
-          <span className="brand-mark">★</span>
-          <span className="brand-name">DressChain</span>
+      <div style={{ position: "relative", zIndex: 3, padding: "18px 20px 6px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div className="brand">
+            <span className="brand-mark">★</span>
+            <span className="brand-name">DressChain</span>
+          </div>
+          <button className="btn outline small" onClick={() => navigate("/")}>
+            Back to Start
+          </button>
         </div>
       </div>
 
-      {/* PODIUM (top) */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 2,
-          height: 560,
-          width: "100%",
-          overflow: "hidden",
-        }}
-      >
-        {/* IMPORTANT: no blur / no backdropFilter here */}
-        {top3.map((p, i) => {
-          const pos = PODIUM_POS[i] || PODIUM_POS[PODIUM_POS.length - 1];
-          const name = loadPlayerName(p.addr) || shortenAddress(p.addr);
-          const avg = p.voteCount > 0n ? Number(p.avgScaled) / 1_000_000 : 0;
+      {/* ✅ PODIUM FIRST (NO BLUR PANEL) */}
+      <div style={{ position: "relative", zIndex: 2, padding: "0 20px", marginTop: 6 }}>
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+            height: 560,
+            position: "relative",
+            // IMPORTANT: no backdropFilter here => no “blur container”
+            background: "transparent",
+          }}
+        >
+          {top3.map((p, i) => {
+            const pos = PODIUM_POS[i] || PODIUM_POS[PODIUM_POS.length - 1];
+            const name = loadPlayerName(p.addr) || shortenAddress(p.addr);
+            const avg = p.voteCount > 0n ? Number(p.avgScaled) / 1_000_000 : 0;
 
-          const baseW = 120;
-          const baseH = 220;
-          const w = Math.round(baseW * (pos.scale || 1));
-          const h = Math.round(baseH * (pos.scale || 1));
+            // smaller sizes (your screenshot: too big before)
+            const baseW = 115;
+            const baseH = 220;
+            const w = Math.round(baseW * (pos.scale || 1));
+            const h = Math.round(baseH * (pos.scale || 1));
 
-          return (
-            <div
-              key={p.addr}
-              style={{
-                position: "absolute",
-                left: pos.left,
-                top: pos.top,
-                transform: "translate(-50%, -100%)",
-                textAlign: "center",
-              }}
-            >
+            return (
               <div
+                key={p.addr}
                 style={{
-                  width: w,
-                  height: h,
-                  filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.28))",
+                  position: "absolute",
+                  left: pos.left,
+                  top: pos.top,
+                  transform: "translate(-50%, -100%)",
+                  textAlign: "center",
                 }}
               >
                 {p.outfitObj ? (
-                  <OutfitStage outfit={p.outfitObj} width={w} height={h} nameMaps={NAME_MAPS} />
+                  <div style={{ width: w, height: h, filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.25))" }}>
+                    <OutfitStage outfit={p.outfitObj} width={w} height={h} nameMaps={NAME_MAPS} />
+                  </div>
                 ) : (
-                  <div style={{ opacity: 0.8 }}>No outfit</div>
+                  <img
+                    src={avatarForAddress(p.addr)}
+                    alt=""
+                    draggable={false}
+                    style={{
+                      width: w,
+                      height: "auto",
+                      filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.25))",
+                      userSelect: "none",
+                      pointerEvents: "none",
+                    }}
+                  />
                 )}
-              </div>
 
-              <div className="result-badge" title={p.addr}>
-                <b>#{i + 1}</b> {name} • {avg.toFixed(2)}★
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    background: "rgba(20, 12, 32, 0.55)",
+                    border: "1px solid rgba(255,255,255,0.18)",
+                    color: "white",
+                    fontSize: 12,
+                    backdropFilter: "none", // ensure badge itself doesn't blur background
+                    maxWidth: 260,
+                  }}
+                  title={p.addr}
+                >
+                  <b>#{i + 1}</b> {name} • {avg.toFixed(2)}★
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      {/* RESULTS (middle) */}
-      <div style={{ position: "relative", zIndex: 3, padding: "0 20px", marginTop: 12 }}>
-        <div className="result-card">
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-            <h2 style={{ margin: 0 }}>Results</h2>
-            <button className="btn outline small" onClick={() => navigate("/")}>
-              Back to Start
-            </button>
-          </div>
+      {/* ✅ RESULTS SECOND */}
+      <div style={{ position: "relative", zIndex: 3, padding: "0 20px", marginTop: 10 }}>
+        <div className="result-card" style={{ maxWidth: 1100, margin: "0 auto" }}>
+          <h2 style={{ margin: 0 }}>Results</h2>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
             <div>
               <b>Room:</b> {shortenAddress(roomId)}
             </div>
             <div>
-              <b>Topic:</b> {TOPICS?.[topicId] ?? `Topic #${topicId}`}
+              <b>Topic:</b> {topicText(topicId)}
             </div>
             <div>
               <b>Final pot (on-chain):</b> {formatUnits(finalPot, tokenDecimals)} {tokenSymbol}
@@ -256,8 +291,7 @@ export default function Result_Page() {
           </div>
 
           <div style={{ marginTop: 10, opacity: 0.9, fontSize: 13 }}>
-            Winners from contract:{" "}
-            {winners?.length ? winners.map(shortenAddress).join(", ") : "— (not finalized yet)"}
+            Winners from contract: {winners?.length ? winners.map(shortenAddress).join(", ") : "— (not finalized yet)"}
           </div>
 
           {status && (
@@ -268,9 +302,9 @@ export default function Result_Page() {
         </div>
       </div>
 
-      {/* LEADERBOARD (bottom) */}
-      <div style={{ position: "relative", zIndex: 3, padding: "16px 20px 24px" }}>
-        <div className="result-card result-leaderboard">
+      {/* ✅ LEADERBOARD THIRD */}
+      <div style={{ position: "relative", zIndex: 3, padding: "18px 20px 26px" }}>
+        <div className="result-card result-leaderboard" style={{ maxWidth: 1100, margin: "0 auto" }}>
           <h3 style={{ marginTop: 0 }}>Leaderboard (computed from totalStars/voteCount)</h3>
 
           {rows.length === 0 ? (
