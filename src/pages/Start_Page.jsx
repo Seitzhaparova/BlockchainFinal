@@ -231,50 +231,96 @@ export default function Start_Page() {
     }
   }
 
-  async function createGame() {
-    if (!hasConfig) return setStatus("Missing .env contract addresses.");
-    if (!account) return setStatus("Connect wallet first.");
+    async function createGame() {
+      if (!hasConfig) return setStatus("Missing .env contract addresses.");
+      if (!account) return setStatus("Connect wallet first.");
 
-    const mp = Math.max(2, Math.min(10, Number(maxPlayers) || 4));
+      const mp = Math.max(2, Math.min(10, Number(maxPlayers) || 4));
 
-    const topicId =
-      topicMode === "fixed"
-        ? Math.max(0, Math.min(TOPICS.length - 1, Number(topicFixed) || 0))
-        : Math.floor(Math.random() * TOPICS.length);
+      const topicId =
+        topicMode === "fixed"
+          ? Math.max(0, Math.min(TOPICS.length - 1, Number(topicFixed) || 0))
+          : Math.floor(Math.random() * TOPICS.length);
 
-    try {
-      setStatus("Creating game... confirm MetaMask");
-      const signer = await getSigner();
-      const factory = getFactory(FACTORY_ADDR, signer);
+      try {
+        setStatus("Creating game... confirm MetaMask");
+        const signer = await getSigner();
+        const factory = getFactory(FACTORY_ADDR, signer);
 
-      const betUnits = parseUnits(String(betTokens || "0"), tokenDecimals);
-      const tx = await factory.createGame(betUnits, mp, topicId);
-      const receipt = await tx.wait();
+        const betUnits = parseUnits(String(betTokens || "0"), tokenDecimals);
 
-      let roomAddr = null;
-      for (const log of receipt.logs) {
-        try {
-          const parsed = factory.interface.parseLog(log);
-          if (parsed?.name === "GameCreated") {
-            roomAddr = parsed.args.gameAddress;
-            break;
+        // keep your current call (since tx succeeds)
+        const tx = await factory.createGame(betUnits, mp, topicId);
+        const receipt = await tx.wait();
+
+        let roomAddr = null;
+
+        // 1) Parse logs only from the FACTORY address
+        for (const log of receipt.logs) {
+          if (!log?.address) continue;
+          if (log.address.toLowerCase() !== FACTORY_ADDR.toLowerCase()) continue;
+
+          try {
+            const parsed = factory.interface.parseLog(log);
+
+            // Accept both common event names
+            if (parsed?.name === "GameCreated" || parsed?.name === "RoomCreated") {
+              // safest: first event argument is the new room address
+              roomAddr =
+                parsed.args?.gameAddress ||
+                parsed.args?.room ||
+                parsed.args?.game ||
+                parsed.args?.[0];
+
+              break;
+            }
+          } catch {
+            // ignore non-matching logs
           }
-        } catch {}
-      }
+        }
 
-      if (!roomAddr || !isAddress(roomAddr)) {
-        setStatus("Game created, but room address not detected. (Event parsing issue)");
-        return;
-      }
+        // 2) Fallback: query events from that block (super reliable)
+        if (!roomAddr) {
+          try {
+            const fromBlock = receipt.blockNumber;
+            const toBlock = receipt.blockNumber;
 
-      pushRecent(roomAddr);
-      setStatus("Game created ✅");
-      navigate(`/lobby/${roomAddr}`);
-    } catch (e) {
-      console.error(e);
-      setStatus("Create failed. Check deployment + Sepolia.");
+            // try both filters if ABI has them
+            const ev1 = factory.filters?.GameCreated?.();
+            const ev2 = factory.filters?.RoomCreated?.();
+
+            const [logs1, logs2] = await Promise.all([
+              ev1 ? factory.queryFilter(ev1, fromBlock, toBlock) : Promise.resolve([]),
+              ev2 ? factory.queryFilter(ev2, fromBlock, toBlock) : Promise.resolve([]),
+            ]);
+
+            const all = [...logs1, ...logs2];
+
+            const mine = all.find((e) => e.transactionHash === receipt.hash) || all[all.length - 1];
+            if (mine?.args) {
+              roomAddr =
+                mine.args.gameAddress ||
+                mine.args.room ||
+                mine.args.game ||
+                mine.args[0];
+            }
+          } catch {}
+        }
+
+        if (!roomAddr || !isAddress(roomAddr)) {
+          setStatus("Game created, but room address not detected. (Event parsing issue)");
+          return;
+        }
+
+        pushRecent(roomAddr);
+        setStatus("Game created ✅");
+        navigate(`/lobby/${roomAddr}`);
+      } catch (e) {
+        console.error(e);
+        setStatus("Create failed. Check deployment + Sepolia.");
+      }
     }
-  }
+
 
   function joinGame() {
     const id = joinRoomInput.trim();

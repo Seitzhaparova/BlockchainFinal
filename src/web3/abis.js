@@ -23,8 +23,11 @@ export const TOKEN_SALE_ABI = [
 // So ABI must match that (if your Solidity uses createRoom/RoomCreated, tell me and I’ll swap)
 export const GAME_FACTORY_ABI = [
   "function createGame(uint256 betAmount, uint256 maxPlayers, uint256 topicId) returns (address)",
+  "function createRoom(uint256 betAmount, uint256 maxPlayers, uint256 topicId) returns (address)",
   "event GameCreated(address indexed gameAddress, address indexed host, uint256 betAmount, uint256 maxPlayers, uint256 topicId)",
+  "event RoomCreated(address indexed room, address indexed host, uint256 betAmount, uint256 maxPlayers, uint256 topicId)",
 ];
+
 
 export const GAME_ROOM_ABI = [
   "function host() view returns (address)",
