@@ -47,9 +47,9 @@ function avatarForAddress(addr) {
 // ✅ Tuned for typical podium background (feet align around bottom area)
 // You can tweak these 3 numbers if needed:
 const PODIUM_POS = [
-  { left: "50%", top: "70%", scale: 1.15 }, // 1st
-  { left: "31%", top: "85%", scale: 1.0 },  // 2nd
-  { left: "69%", top: "90%", scale: 1.0 },  // 3rd
+  { left: "50%", top: "55%", scale: 1.15 }, // 1st
+  { left: "31%", top: "70%", scale: 1.0 },  // 2nd
+  { left: "69%", top: "80%", scale: 1.0 },  // 3rd
 ];
 
 export default function Result_Page() {
