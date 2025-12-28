@@ -51,9 +51,9 @@ function avatarForAddress(addr) {
 
 // podium positions
 const PODIUM_POS = [
-  { left: "50%", top: "55%", scale: 1.15 }, // 1st
-  { left: "31%", top: "65%", scale: 1.0 },  // 2nd
-  { left: "69%", top: "75%", scale: 1.0 },  // 3rd
+  { left: "50%", top: "45%", scale: 1.15 }, // 1st
+  { left: "31%", top: "55%", scale: 1.0 },  // 2nd
+  { left: "69%", top: "65%", scale: 1.0 },  // 3rd
 ];
 const PODIUM_SHIFT_Y = "clamp(100px, 10vh, 130px)";
 
