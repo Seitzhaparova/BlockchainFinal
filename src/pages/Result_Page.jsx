@@ -237,8 +237,8 @@ export default function Result_Page() {
           const avg = p.voteCount > 0n ? Number(p.avgScaled) / 1_000_000 : 0;
 
           // size for OutfitStage
-          const baseW = 180;
-          const baseH = 300;
+          const baseW = 140;
+          const baseH = 240;
           const w = Math.round(baseW * (pos.scale || 1));
           const h = Math.round(baseH * (pos.scale || 1));
 
