@@ -20,10 +20,6 @@ export function getToken(addr, signerOrProvider) {
   return new Contract(addr, ERC20_ABI, signerOrProvider);
 }
 
-export function getTokenSale(addr, signerOrProvider) {
-  return new Contract(addr, TOKEN_SALE_ABI, signerOrProvider);
-}
-
 export function getFactory(addr, signerOrProvider) {
   return new Contract(addr, GAME_FACTORY_ABI, signerOrProvider);
 }
