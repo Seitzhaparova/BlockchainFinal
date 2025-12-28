@@ -1,14 +1,14 @@
 // src/pages/Voting_Lobby.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import "../main_page.css";
 
-import { connectWallet, getProvider, getSigner } from "../web3/eth";
-import { assertAddresses, getAddresses, getRoom } from "../web3/contracts";
+import { connectWallet, getProvider, getSigner } from "../web3/eth.js";
+import { getRoom } from "../web3/contracts.js";
 
 import OutfitStage from "../components/OutfitStage.jsx";
-import { ASSETS, NAME_MAPS } from "../utils/assetCatalogs";
-import { decodeOutfit } from "../utils/outfitCodec";
+import { ASSETS, NAME_MAPS } from "../utils/assetCatalogs.js";
+import { decodeOutfit } from "../utils/outfitCodec.js";
 
 const PHASE = ["Lobby", "Styling", "Voting", "Ended", "Canceled"];
 
@@ -24,10 +24,18 @@ function fmtTime(sec) {
   return `${mm}:${ss}`;
 }
 
+function isZeroAddress(a) {
+  return (
+    !a ||
+    a === "0x0000000000000000000000000000000000000000" ||
+    a.toLowerCase?.() === "0x0000000000000000000000000000000000000000"
+  );
+}
+
 function StarRow({ value, onChange, disabled }) {
   const v = Number(value) || 0;
   return (
-    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
       {[0, 1, 2, 3, 4, 5].map((s) => (
         <button
           key={s}
@@ -51,34 +59,31 @@ function StarRow({ value, onChange, disabled }) {
 export default function Voting_Lobby() {
   const { roomId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const assets = ASSETS;
 
   const [account, setAccount] = useState(null);
   const [status, setStatus] = useState("");
 
-  const [phase, setPhase] = useState(0);
+  // IMPORTANT: start null so we never redirect before first on-chain load
+  const [phase, setPhase] = useState(null);
+  const [phaseLoaded, setPhaseLoaded] = useState(false);
+
   const [players, setPlayers] = useState([]);
   const [votingDeadline, setVotingDeadline] = useState(0);
 
   const [hasVoted, setHasVoted] = useState(false);
 
-  const [outfitCodes, setOutfitCodes] = useState({}); // addr -> string code
+  const [outfitCodes, setOutfitCodes] = useState({}); // addr -> string
   const [decoded, setDecoded] = useState({}); // addr -> outfit obj
   const [ratings, setRatings] = useState({}); // addr -> 0..5
 
   const [timeLeft, setTimeLeft] = useState(0);
 
-  const { token: TOKEN_ADDR } = getAddresses();
-  const hasConfig = useMemo(() => {
-    try {
-      assertAddresses();
-      return true;
-    } catch {
-      return false;
-    }
-  }, [TOKEN_ADDR]);
+  const inFlightRef = useRef(false);
 
+  // get account (no popup)
   useEffect(() => {
     (async () => {
       try {
@@ -92,37 +97,60 @@ export default function Voting_Lobby() {
   }, []);
 
   async function refresh() {
-    if (!hasConfig) return;
+    if (!roomId) return;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+
     try {
       const provider = await getProvider();
       const room = getRoom(roomId, provider);
 
-      const [ph, plist, dl] = await Promise.all([room.phase(), room.getPlayers(), room.votingDeadline()]);
+      const [ph, plist, dl] = await Promise.all([
+        room.phase(),
+        room.getPlayers(),
+        room.votingDeadline(),
+      ]);
+
       const phNum = Number(ph);
+      const cleanPlayers = Array.isArray(plist)
+        ? plist.filter((a) => !isZeroAddress(a))
+        : [];
 
       setPhase(phNum);
-      setPlayers(plist);
+      setPhaseLoaded(true);
+      setPlayers(cleanPlayers);
       setVotingDeadline(Number(dl));
 
+      // pull outfits in parallel
+      const outfitResults = await Promise.all(
+        cleanPlayers.map(async (p) => {
+          const [has, code] = await room.getOutfit(p);
+          return { p, has: Boolean(has), code };
+        })
+      );
+
       const nextCodes = {};
-      for (const p of plist) {
-        const [has, code] = await room.getOutfit(p);
-        if (has) nextCodes[p] = code.toString();
+      for (const r of outfitResults) {
+        if (r.has) nextCodes[r.p] = r.code.toString();
       }
       setOutfitCodes(nextCodes);
 
       const nextDecoded = {};
       for (const [addr, codeStr] of Object.entries(nextCodes)) {
-        nextDecoded[addr] = decodeOutfit(BigInt(codeStr), assets);
+        try {
+          nextDecoded[addr] = decodeOutfit(BigInt(codeStr), assets);
+        } catch {
+          // keep it missing instead of crashing
+        }
       }
       setDecoded(nextDecoded);
 
       // init ratings defaults (0) for all targets except self
       setRatings((prev) => {
         const next = { ...prev };
-        for (const p of plist) {
+        for (const p of cleanPlayers) {
           if (account && p.toLowerCase() === account.toLowerCase()) continue;
-          if (!nextCodes[p]) continue;
+          if (!nextCodes[p]) continue; // only for submitted outfits
           if (next[p] === undefined) next[p] = 0;
         }
         return next;
@@ -134,14 +162,25 @@ export default function Voting_Lobby() {
       }
     } catch (e) {
       console.error(e);
-      setStatus("Failed to load voting data.");
+      setStatus("Failed to load voting data (wrong network / room / ABI).");
+      // IMPORTANT: do NOT reset phase on error
+    } finally {
+      inFlightRef.current = false;
     }
   }
 
   useEffect(() => {
+    let stop = false;
     refresh();
-    const t = setInterval(refresh, 2500);
-    return () => clearInterval(t);
+
+    const t = setInterval(() => {
+      if (!stop) refresh();
+    }, 2500);
+
+    return () => {
+      stop = true;
+      clearInterval(t);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, account]);
 
@@ -155,12 +194,22 @@ export default function Voting_Lobby() {
     return () => clearInterval(t);
   }, [votingDeadline]);
 
+  // ✅ guarded routing (prevents bounce)
   useEffect(() => {
-    if (phase === 3) navigate(`/result/${roomId}`);
-    if (phase === 1) navigate(`/active/${roomId}`);
-    if (phase === 0) navigate(`/lobby/${roomId}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+    if (!phaseLoaded) return;
+    if (typeof phase !== "number") return;
+
+    const path = location.pathname;
+
+    if (phase === 3 && !path.startsWith(`/result/`)) {
+      navigate(`/result/${roomId}`, { replace: true });
+    } else if (phase === 1 && !path.startsWith(`/active/`)) {
+      navigate(`/active/${roomId}`, { replace: true });
+    } else if (phase === 0 && !path.startsWith(`/lobby/`)) {
+      navigate(`/lobby/${roomId}`, { replace: true });
+    }
+    // phase === 2 => stay here
+  }, [phase, phaseLoaded, roomId, navigate, location.pathname]);
 
   async function onConnect() {
     try {
@@ -206,7 +255,7 @@ export default function Voting_Lobby() {
       setHasVoted(true);
     } catch (e) {
       console.error(e);
-      setStatus("Vote failed (must be in Voting phase, only joined players, one vote per player).");
+      setStatus("Vote failed (must be Voting phase, only joined players, one vote per player).");
     }
   }
 
@@ -220,7 +269,7 @@ export default function Voting_Lobby() {
       await tx.wait();
 
       setStatus("Finalized ✅");
-      navigate(`/result/${roomId}`);
+      navigate(`/result/${roomId}`, { replace: true });
     } catch (e) {
       console.error(e);
       setStatus("Finalize failed (wait for deadline or all players voted).");
@@ -280,7 +329,8 @@ export default function Voting_Lobby() {
             <div>
               <h2 style={{ margin: 0 }}>Voting</h2>
               <div style={{ fontSize: 13, opacity: 0.8 }}>
-                Room: <b>{shortenAddress(roomId)}</b> • Phase: <b>{PHASE[phase] ?? phase}</b>
+                Room: <b>{shortenAddress(roomId)}</b> • Phase:{" "}
+                <b>{phaseLoaded && typeof phase === "number" ? (PHASE[phase] ?? phase) : "Loading…"}</b>
               </div>
               <div style={{ marginTop: 6, fontSize: 13, opacity: 0.85 }}>
                 Voting timer: <b>{votingDeadline ? fmtTime(timeLeft) : "--:--"}</b>{" "}
@@ -288,7 +338,7 @@ export default function Voting_Lobby() {
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>
               <button className="btn outline small" onClick={onConnect}>
                 {account ? "Wallet connected" : "Connect wallet"}
               </button>
