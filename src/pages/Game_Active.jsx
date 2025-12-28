@@ -1,12 +1,11 @@
 // src/pages/Game_Active.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { useLocation } from "react-router-dom";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import "../main_page.css";
 
 import { connectWallet, getProvider, getSigner } from "../web3/eth";
 import { topicText } from "../web3/topics";
-import { assertAddresses, getAddresses, getRoom } from "../web3/contracts";
+import { getRoom } from "../web3/contracts";
 
 import iconAppearance from "../assets/icons/appearence.png";
 import iconUp from "../assets/icons/up.png";
@@ -50,11 +49,9 @@ export default function Game_Active() {
       body: assets.bodies?.[0]?.url ?? null,
       hair: assets.hairs?.[0]?.url ?? null,
       shoes: assets.shoes?.[0]?.url ?? null,
-
       up: null,
       down: null,
       dress: null,
-
       hairclips: null,
       headphones: null,
       necklace: null,
@@ -64,31 +61,26 @@ export default function Game_Active() {
   }, [assets]);
 
   const [selected, setSelected] = useState(defaultSelected);
-  const [panel, setPanel] = useState("appearance"); // appearance|up|down|dress|shoes|acc
+  const [panel, setPanel] = useState("appearance");
 
   const [account, setAccount] = useState(null);
   const [status, setStatus] = useState("");
 
   const [topicId, setTopicId] = useState(0);
-  const [phase, setPhase] = useState(0);
+
+  // IMPORTANT: start null + guard redirects
+  const [phase, setPhase] = useState(null);
+  const [phaseLoaded, setPhaseLoaded] = useState(false);
+
   const [host, setHost] = useState("");
   const [stylingDeadline, setStylingDeadline] = useState(0);
 
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
 
-  const { token: TOKEN_ADDR } = getAddresses();
-  const hasConfig = useMemo(() => {
-    try {
-      assertAddresses();
-      return true;
-    } catch {
-      return false;
-    }
-  }, [TOKEN_ADDR]);
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
-    // ensure defaults are set once assets exist
     setSelected((prev) => ({
       ...defaultSelected,
       ...prev,
@@ -107,11 +99,13 @@ export default function Game_Active() {
         if (accounts?.[0]) setAccount(accounts[0]);
       } catch {}
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function refresh() {
-    if (!hasConfig) return;
+    if (!roomId) return;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+
     try {
       const provider = await getProvider();
       const room = getRoom(roomId, provider);
@@ -127,6 +121,7 @@ export default function Game_Active() {
       setPhase(Number(ph));
       setHost(h);
       setStylingDeadline(Number(dl));
+      setPhaseLoaded(true);
 
       if (account) {
         const [hasOutfit] = await room.getOutfit(account);
@@ -134,7 +129,10 @@ export default function Game_Active() {
       }
     } catch (e) {
       console.error(e);
-      setStatus("Failed to load room (wrong address or not Sepolia).");
+      setStatus("Failed to load room (wrong address, wrong network, or RPC issue).");
+      // IMPORTANT: do NOT reset phase to 0 on error
+    } finally {
+      inFlightRef.current = false;
     }
   }
 
@@ -145,7 +143,6 @@ export default function Game_Active() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, account]);
 
-  // timer tick
   useEffect(() => {
     const t = setInterval(() => {
       if (!stylingDeadline) return setTimeLeft(0);
@@ -155,16 +152,26 @@ export default function Game_Active() {
     return () => clearInterval(t);
   }, [stylingDeadline]);
 
+  // ✅ guarded routing: prevents lobby<->active bouncing
   useEffect(() => {
-      if (!devSolo) {
-    // normal behavior (real on-chain flow)
-    if (phase === 0) navigate(`/lobby/${roomId}`, { replace: true });
-  } 
-  // devSolo = allow staying in Game_Active even if phase is still Lobby
-    if (phase === 2) navigate(`/voting/${roomId}`);
-    if (phase === 3) navigate(`/result/${roomId}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+    if (!phaseLoaded) return;
+    if (typeof phase !== "number") return;
+
+    const path = location.pathname;
+
+    if (!devSolo && phase === 0 && !path.startsWith(`/lobby/`)) {
+      navigate(`/lobby/${roomId}`, { replace: true });
+      return;
+    }
+    if (phase === 2 && !path.startsWith(`/voting/`)) {
+      navigate(`/voting/${roomId}`, { replace: true });
+      return;
+    }
+    if (phase === 3 && !path.startsWith(`/result/`)) {
+      navigate(`/result/${roomId}`, { replace: true });
+      return;
+    }
+  }, [phase, phaseLoaded, devSolo, roomId, navigate, location.pathname]);
 
   const isHost = account && host && account.toLowerCase() === host.toLowerCase();
   const timeIsUp = timeLeft <= 0 && stylingDeadline > 0;
@@ -178,7 +185,7 @@ export default function Game_Active() {
       setStatus("Wallet connected ✅");
     } catch (e) {
       console.error(e);
-      setStatus("Connect failed (Sepolia + MetaMask).");
+      setStatus("Connect failed (check MetaMask + correct network).");
     }
   }
 
@@ -207,7 +214,9 @@ export default function Game_Active() {
   async function submitOutfit() {
     if (!account) return setStatus("Connect wallet first.");
     if (hasSubmitted) return setStatus("You already submitted ✅");
-    if (!selected.body || !selected.hair || !selected.shoes) return setStatus("Pick body + hair + shoes first.");
+    if (!selected.body || !selected.hair || !selected.shoes) {
+      return setStatus("Pick body + hair + shoes first.");
+    }
 
     try {
       setStatus("Submitting outfit on-chain... confirm MetaMask");
@@ -222,7 +231,7 @@ export default function Game_Active() {
       setHasSubmitted(true);
     } catch (e) {
       console.error(e);
-      setStatus("Submit failed (must be in Styling phase, only joined players).");
+      setStatus("Submit failed (must be Styling phase, only joined players).");
     }
   }
 
@@ -237,10 +246,10 @@ export default function Game_Active() {
       await tx.wait();
 
       setStatus("Voting started ✅");
-      navigate(`/voting/${roomId}`);
+      navigate(`/voting/${roomId}`, { replace: true });
     } catch (e) {
       console.error(e);
-      setStatus("Start voting failed (only host, need 2+ outfits and deadline/all submitted).");
+      setStatus("Start voting failed (only host, need enough outfits / time).");
     }
   }
 
@@ -404,14 +413,10 @@ export default function Game_Active() {
 
   const wardrobeContent = useMemo(() => {
     if (panel === "appearance") return <WardrobeAppearance />;
-    if (panel === "shoes")
-      return <WardrobeGrid title="Shoes" items={assets.shoes} selectedUrl={selected.shoes} onPick={pickShoes} />;
-    if (panel === "up")
-      return <WardrobeGrid title="Up" items={assets.up} selectedUrl={selected.up} onPick={pickUp} allowNone />;
-    if (panel === "down")
-      return <WardrobeGrid title="Down" items={assets.down} selectedUrl={selected.down} onPick={pickDown} allowNone />;
-    if (panel === "dress")
-      return <WardrobeGrid title="Dress" items={assets.dress} selectedUrl={selected.dress} onPick={pickDress} allowNone />;
+    if (panel === "shoes") return <WardrobeGrid title="Shoes" items={assets.shoes} selectedUrl={selected.shoes} onPick={pickShoes} />;
+    if (panel === "up") return <WardrobeGrid title="Up" items={assets.up} selectedUrl={selected.up} onPick={pickUp} allowNone />;
+    if (panel === "down") return <WardrobeGrid title="Down" items={assets.down} selectedUrl={selected.down} onPick={pickDown} allowNone />;
+    if (panel === "dress") return <WardrobeGrid title="Dress" items={assets.dress} selectedUrl={selected.dress} onPick={pickDress} allowNone />;
     return <WardrobeAccessories />;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panel, assets, selected, uiDisabled]);
@@ -452,7 +457,6 @@ export default function Game_Active() {
       <main className="active-main">
         <section className="active-card">
           <div className="active-top">
-            {/* LEFT */}
             <div className="active-leftTop">
               <div className="active-topicBubble">
                 <div className="active-bubbleTitle">I need to dress in style</div>
@@ -470,12 +474,13 @@ export default function Game_Active() {
                 <img className="active-miniImg" src={selected.body ?? assets.bodies?.[0]?.url} alt="player" />
                 <div className="active-miniText">
                   <div className="active-miniLabel">PHASE</div>
-                  <div className="active-miniValue">{PHASE[phase] ?? phase}</div>
+                  <div className="active-miniValue">
+                    {phaseLoaded && typeof phase === "number" ? (PHASE[phase] ?? phase) : "Loading…"}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* CENTER */}
             <div className="active-wardrobe">
               <div className="active-wardrobeFrame">
                 <div className="active-wardrobePlaceholder" />
@@ -485,7 +490,6 @@ export default function Game_Active() {
               </div>
             </div>
 
-            {/* RIGHT */}
             <div className="active-rightPanel">
               <button className="btn outline small" onClick={onConnect}>
                 {account ? "Wallet connected" : "Connect wallet"}
@@ -497,11 +501,7 @@ export default function Game_Active() {
               </div>
 
               <div className="active-items">
-                <button
-                  className={`active-item ${panel === "appearance" ? "selected" : ""}`}
-                  onClick={() => setPanel("appearance")}
-                  disabled={uiDisabled}
-                >
+                <button className={`active-item ${panel === "appearance" ? "selected" : ""}`} onClick={() => setPanel("appearance")} disabled={uiDisabled}>
                   <div className="active-itemIcon">
                     <img src={iconAppearance} alt="appearance" draggable={false} style={{ width: 26, height: 26 }} />
                   </div>

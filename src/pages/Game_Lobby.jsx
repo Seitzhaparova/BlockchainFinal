@@ -1,12 +1,12 @@
 // src/pages/Game_Lobby.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import "../main_page.css";
 
 import { formatUnits } from "ethers";
-import { connectWallet, getProvider, getSigner } from "../web3/eth.js";
-import { getAddresses, getRoom, getToken } from "../web3/contracts.js";
-import * as Topics from "../web3/topics.js";
+import { connectWallet, getProvider, getSigner } from "../web3/eth";
+import { getAddresses, getRoom, getToken } from "../web3/contracts";
+import * as Topics from "../web3/topics";
 
 function shortenAddress(address) {
   if (!address) return "";
@@ -55,7 +55,6 @@ function toNum(x, fallback = 0) {
     if (x == null) return fallback;
     if (typeof x === "number") return Number.isFinite(x) ? x : fallback;
     if (typeof x === "bigint") {
-      // avoid crashing if it is huge
       const n = Number(x);
       return Number.isFinite(n) ? n : fallback;
     }
@@ -71,13 +70,11 @@ function toNum(x, fallback = 0) {
 }
 
 function getTopicTextFromId(topicIdNum) {
-  // 1) if your topics.js has a function
   if (typeof Topics.getTopicText === "function") {
     const t = Topics.getTopicText(topicIdNum);
     if (t) return t;
   }
 
-  // 2) if it exports arrays/maps
   const arr =
     Topics.TOPICS ||
     Topics.GAME_TOPICS ||
@@ -90,25 +87,19 @@ function getTopicTextFromId(topicIdNum) {
   const map = Topics.TOPIC_MAP || Topics.topicMap || null;
   if (map && map[topicIdNum]) return map[topicIdNum];
 
-  // 3) fallback
   if (FALLBACK_TOPICS[topicIdNum]) return FALLBACK_TOPICS[topicIdNum];
   return topicIdNum >= 0 ? `Topic #${topicIdNum}` : "—";
 }
 
 function parseRevertMessage(e) {
-  // ethers v6 often puts the useful part into shortMessage/message
-  const msg =
-    e?.shortMessage ||
-    e?.reason ||
-    e?.message ||
-    "Transaction failed.";
-  // keep it readable
+  const msg = e?.shortMessage || e?.reason || e?.message || "Transaction failed.";
   return String(msg).replace("execution reverted:", "Reverted:");
 }
 
 export default function GameLobby() {
   const navigate = useNavigate();
-  const { roomId } = useParams(); // room contract address
+  const location = useLocation();
+  const { roomId } = useParams();
 
   const [account, setAccount] = useState(null);
   const [status, setStatus] = useState("");
@@ -116,7 +107,10 @@ export default function GameLobby() {
   const [roomTopic, setRoomTopic] = useState("—");
   const [roomHost, setRoomHost] = useState("—");
   const [maxPlayers, setMaxPlayers] = useState(2);
-  const [phase, setPhase] = useState(0);
+
+  // IMPORTANT: start as null so we do NOT redirect on initial render
+  const [phase, setPhase] = useState(null);
+  const [phaseLoaded, setPhaseLoaded] = useState(false);
 
   const [betHuman, setBetHuman] = useState("—");
   const [betRaw, setBetRaw] = useState(null);
@@ -124,15 +118,14 @@ export default function GameLobby() {
   const [tokenAddr, setTokenAddr] = useState(null);
   const [bankAddr, setBankAddr] = useState(null);
 
-  const [onChainPlayers, setOnChainPlayers] = useState([]); // players[] from contract
-  const [players, setPlayers] = useState([]); // UI slots (host first + others)
+  const [onChainPlayers, setOnChainPlayers] = useState([]);
+  const [players, setPlayers] = useState([]);
   const [joinedMe, setJoinedMe] = useState(false);
   const [joinedHost, setJoinedHost] = useState(false);
 
   const [chatInput, setChatInput] = useState("");
-  const [chatByAddr, setChatByAddr] = useState({}); // { addrLower: {text, until} }
+  const [chatByAddr, setChatByAddr] = useState({});
 
-  // stable avatar per address
   const avatarRef = useRef(new Map());
   const tokenDecimalsRef = useRef(null);
 
@@ -199,6 +192,7 @@ export default function GameLobby() {
 
   // ---- room polling ----
   const loadRoomRef = useRef(null);
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
     if (!roomId) return;
@@ -207,19 +201,20 @@ export default function GameLobby() {
     let timer = null;
 
     async function load() {
+      if (inFlightRef.current) return; // prevent overlapping calls
+      inFlightRef.current = true;
+
       try {
         const provider = await getProvider();
         const room = getRoom(roomId, provider);
 
-        // read base info (exact ABI names)
         const host = await room.host();
         const mp = Math.max(2, toNum(await room.maxPlayers(), 2));
         const ph = toNum(await room.phase(), 0);
         const topicId = toNum(await room.topicId(), -1);
         const bet = await room.betAmount();
-        const rawPlayers = await room.getPlayers(); // address[]
+        const rawPlayers = await room.getPlayers();
 
-        // optional getters (only if ABI contains them)
         let detectedToken = null;
         let detectedBank = null;
         try {
@@ -233,7 +228,6 @@ export default function GameLobby() {
           ? rawPlayers.filter((a) => !isZeroAddress(a))
           : [];
 
-        // joined flags (needs joined(address) in ABI)
         let meJoined = false;
         let hostJoined = false;
         try {
@@ -252,6 +246,8 @@ export default function GameLobby() {
         setRoomHost(host && !isZeroAddress(host) ? host : "—");
         setMaxPlayers(mp);
         setPhase(ph);
+        setPhaseLoaded(true);
+
         setBetRaw(bet);
         setOnChainPlayers(chainPlayers);
         setJoinedMe(!!meJoined);
@@ -260,16 +256,14 @@ export default function GameLobby() {
         if (detectedToken && !isZeroAddress(detectedToken)) setTokenAddr(detectedToken);
         if (detectedBank && !isZeroAddress(detectedBank)) setBankAddr(detectedBank);
 
-        // topic mapping ✅
         setRoomTopic(getTopicTextFromId(topicId));
 
-        // bet display
         try {
           let decimals = tokenDecimalsRef.current;
           if (decimals == null) {
-            // prefer env token
             const { token } = getAddresses();
-            const tokenToUse = detectedToken && !isZeroAddress(detectedToken) ? detectedToken : token;
+            const tokenToUse =
+              detectedToken && !isZeroAddress(detectedToken) ? detectedToken : token;
             if (tokenToUse) {
               const t = getToken(tokenToUse, provider);
               decimals = toNum(await t.decimals(), 18);
@@ -283,9 +277,7 @@ export default function GameLobby() {
           setBetHuman(String(bet));
         }
 
-        // ---- Build UI slots ----
-        // IMPORTANT: contract players[] may NOT include host unless host called joinGame().
-        // We still render host in the first card, but we show real on-chain joined count separately.
+        // Build UI slots
         const normalized = [];
         if (host && !isZeroAddress(host)) normalized.push(host);
         for (const a of chainPlayers) {
@@ -307,13 +299,13 @@ export default function GameLobby() {
 
         setPlayers(slots);
 
-        // clear load error
-        setStatus((s) =>
-          s.startsWith("Failed to load room state") ? "" : s
-        );
+        setStatus((s) => (s.startsWith("Failed to load room state") ? "" : s));
       } catch (e) {
         console.error(e);
         if (!stop) setStatus("Failed to load room state (check ABI / address / network).");
+        // IMPORTANT: do NOT set phase to 0 on error; keep last known value and phaseLoaded state
+      } finally {
+        inFlightRef.current = false;
       }
     }
 
@@ -327,13 +319,22 @@ export default function GameLobby() {
     };
   }, [roomId, account]);
 
-  // phase routing
+  // ✅ phase routing (GUARDED — no jumping)
   useEffect(() => {
     if (!roomId) return;
-    if (phase === 1) navigate(`/active/${roomId}`, { replace: true });
-    if (phase === 2) navigate(`/voting/${roomId}`, { replace: true });
-    if (phase === 3) navigate(`/result/${roomId}`, { replace: true });
-  }, [phase, roomId, navigate]);
+    if (!phaseLoaded) return;
+    if (typeof phase !== "number") return;
+
+    const path = location.pathname;
+
+    if (phase === 1 && !path.startsWith(`/active/`)) {
+      navigate(`/active/${roomId}`, { replace: true });
+    } else if (phase === 2 && !path.startsWith(`/voting/`)) {
+      navigate(`/voting/${roomId}`, { replace: true });
+    } else if (phase === 3 && !path.startsWith(`/result/`)) {
+      navigate(`/result/${roomId}`, { replace: true });
+    }
+  }, [phase, phaseLoaded, roomId, navigate, location.pathname]);
 
   // ---- chat (localStorage room scoped) ----
   const CHAT_KEY = useMemo(() => (roomId ? `dc_chat_${roomId}` : null), [roomId]);
@@ -439,7 +440,6 @@ export default function GameLobby() {
     }
   }
 
-  // ✅ JOIN TX: approve BANK + joinGame()
   async function handleJoinGame() {
     if (!roomId) return setStatus("Room address missing.");
     if (!account) return setStatus("Connect wallet first.");
@@ -450,18 +450,16 @@ export default function GameLobby() {
       const signer = await getSigner();
       const room = getRoom(roomId, signer);
 
-      // detect bank (spender) — REQUIRED for your current GameRoom.sol design
       let bank = bankAddr;
       try {
         if (!bank && typeof room.bank === "function") bank = await room.bank();
       } catch {}
       if (!bank || isZeroAddress(bank)) {
         return setStatus(
-          "Cannot detect BANK address. Add `function bank() view returns (address)` to GAME_ROOM_ABI or expose it in your ABI."
+          "Cannot detect BANK address. Add `function bank() view returns (address)` to ABI or expose it in your ABI."
         );
       }
 
-      // detect token address
       const { token: tokenEnv } = getAddresses();
       let tokenToUse = tokenAddr || tokenEnv;
       try {
@@ -474,10 +472,8 @@ export default function GameLobby() {
       }
 
       const t = getToken(tokenToUse, signer);
-
       const bet = betRaw ?? (await room.betAmount());
 
-      // approve BANK (spender) if needed
       if (typeof t.allowance === "function" && typeof t.approve === "function") {
         const allowance = await t.allowance(account, bank);
         if (allowance < bet) {
@@ -509,34 +505,7 @@ export default function GameLobby() {
       const signer = await getSigner();
       const room = getRoom(roomId, signer);
 
-      // refresh on-chain truth right before starting
-      const rawPlayers = await room.getPlayers();
-      const chainPlayers = Array.isArray(rawPlayers)
-        ? rawPlayers.filter((a) => !isZeroAddress(a))
-        : [];
-      const chainCount = chainPlayers.length;
-
-      // host must be JOINED on-chain (constructor does NOT auto-join host)
-      let hostJoinedNow = false;
-      try {
-        if (roomHost && roomHost !== "—" && typeof room.joined === "function") {
-          hostJoinedNow = await room.joined(roomHost);
-        }
-      } catch {}
-
-      if (!hostJoinedNow) {
-        setStatus("Host is NOT joined on-chain yet. Click JOIN GAME first (host must pay bet too).");
-        return;
-      }
-
-      // Your deployed contract clearly reverts with “Need 2+ players”,
-      // so we enforce that here to avoid MetaMask “missing revert data”.
-      if (chainCount < 2) {
-        setStatus(`Need 2+ on-chain players. Currently joined on-chain: ${chainCount}.`);
-        return;
-      }
-
-      // preflight: get readable revert (if any)
+      // preflight for readable revert (if provider supports it)
       try {
         if (typeof room.startGame?.staticCall === "function") {
           await room.startGame.staticCall();
@@ -551,7 +520,6 @@ export default function GameLobby() {
       await tx.wait();
 
       setStatus("Game started ✅ (waiting phase update)");
-      // phase polling will redirect automatically when phase becomes Styling
       await loadRoomRef.current?.();
     } catch (e) {
       console.error(e);
@@ -594,7 +562,6 @@ export default function GameLobby() {
       <main className="lobby-main">
         <div className="lobby-body">
           <section className="lobby-left">
-            {/* top row */}
             <div
               style={{
                 display: "flex",
@@ -623,7 +590,6 @@ export default function GameLobby() {
               </div>
             </div>
 
-            {/* meta */}
             <div className="lobby-meta">
               <div className="lobby-pillbox">
                 <div className="lobby-pilllabel">GAME ROOM</div>
@@ -651,23 +617,21 @@ export default function GameLobby() {
               <div className="lobby-pillbox">
                 <div className="lobby-pilllabel">NUMBER OF PLAYERS</div>
                 <div className="lobby-pillvalue">
-                  {/* IMPORTANT: show on-chain players[] count */}
                   {onChainCount} / {maxPlayers}
                 </div>
               </div>
             </div>
 
-            {/* bet / phase */}
             <div style={{ marginTop: 10, opacity: 0.9 }}>
               <div style={{ fontSize: 12 }}>
                 <strong>Bet:</strong> {betHuman} DCT
               </div>
               <div style={{ fontSize: 12 }}>
-                <strong>Phase:</strong> {PHASE[phase] ?? String(phase)}
+                <strong>Phase:</strong>{" "}
+                {phaseLoaded && typeof phase === "number" ? (PHASE[phase] ?? String(phase)) : "Loading…"}
               </div>
             </div>
 
-            {/* players grid (big avatars) */}
             <div className="lobby-players" style={{ marginTop: 16 }}>
               {players.map((p, idx) => {
                 const filled = !!p.address;
@@ -755,18 +719,15 @@ export default function GameLobby() {
               })}
             </div>
 
-            {/* actions */}
             <div className="lobby-actions" style={{ gap: 10 }}>
-              {/* JOIN button (tx) — uses joinedMe from chain, so host can join too */}
-              {account && phase === 0 && !joinedMe && (
+              {account && phaseLoaded && phase === 0 && !joinedMe && (
                 <button className="btn outline" onClick={handleJoinGame}>
                   JOIN GAME
                 </button>
               )}
 
-              {/* START button */}
               {isHost && (
-                <button className="btn primary" onClick={handleStartGame}>
+                <button className="btn primary" onClick={handleStartGame} disabled={!phaseLoaded}>
                   START GAME
                 </button>
               )}
