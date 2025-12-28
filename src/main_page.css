@@ -126,10 +126,11 @@ body {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.9fr);
   gap: 32px;
-  align-items: stretch;
+  align-items: start;          /* ✅ top-align both columns */
   position: relative;
   z-index: 2;
 }
+
 
 .start-card {
   background: var(--card-bg);
@@ -298,12 +299,26 @@ body {
 
 /* Правая часть – силует / декор */
 
+/* ✅ Start page right column aligned with left card */
 .start-side {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  padding-right: 16px;
+  justify-content: flex-start;  /* ✅ no vertical centering */
+  align-items: center;
+  align-self: start;            /* ✅ align grid item to top */
+  padding-top: 0;
 }
+
+.side-silhouette {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;  /* ✅ no vertical centering */
+  padding: 0;                   /* ✅ remove extra top padding */
+  height: auto;                 /* ✅ don't stretch full height */
+  margin-top: 0;
+}
+
 
 .side-tag {
   align-self: flex-end;
@@ -316,7 +331,7 @@ body {
   letter-spacing: 0.08em;
 }
 
-.side-silhouette {
+/* .side-silhouette {
   margin-top: 18px;
   flex: 1;
   border-radius: 999px;
@@ -329,7 +344,7 @@ body {
   padding-bottom: 32px;
   position: relative;
   overflow: hidden;
-}
+} */
 
 .side-silhouette::before {
   content: "";

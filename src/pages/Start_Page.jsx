@@ -256,7 +256,7 @@ export default function Start_Page() {
 
       <main className="start-main">
         <div className="start-card">
-          <h1 className="start-title">Multiplayer On-Chain Dress-Up</h1>
+          <h1 className="start-title">On-Chain Dress-Up</h1>
 
           {!hasConfig && (
             <div className="status-bar">
