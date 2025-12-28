@@ -8,10 +8,15 @@ import { getProvider } from "../web3/eth.js";
 import { topicText } from "../web3/topics.js";
 import { getAddresses, getRoom, getToken } from "../web3/contracts.js";
 
+// ✅ Render real outfits (same as Voting page)
+import OutfitStage from "../components/OutfitStage.jsx";
+import { ASSETS, NAME_MAPS } from "../utils/assetCatalogs";
+import { decodeOutfit } from "../utils/outfitCodec";
+
 // Podium background
 import bgImg from "../assets/results/background.png";
 
-// Fallback girl avatars
+// Fallback girl avatars (used only if outfit decode fails)
 import girl1 from "../assets/icons_girls/girl1.png";
 import girl2 from "../assets/icons_girls/girl2.png";
 import girl3 from "../assets/icons_girls/girl3.png";
@@ -44,8 +49,7 @@ function avatarForAddress(addr) {
   return AVATARS[idx];
 }
 
-// ✅ Tuned for typical podium background (feet align around bottom area)
-// You can tweak these 3 numbers if needed:
+// podium positions
 const PODIUM_POS = [
   { left: "50%", top: "55%", scale: 1.15 }, // 1st
   { left: "31%", top: "65%", scale: 1.0 },  // 2nd
@@ -55,6 +59,8 @@ const PODIUM_POS = [
 export default function Result_Page() {
   const { roomId } = useParams();
   const navigate = useNavigate();
+
+  const assets = ASSETS;
 
   const [status, setStatus] = useState("");
 
@@ -84,7 +90,10 @@ export default function Result_Page() {
       } catch {}
 
       const { token: tokenEnv } = getAddresses();
-      const tokenToUse = tokenAddr && tokenAddr !== "0x0000000000000000000000000000000000000000" ? tokenAddr : tokenEnv;
+      const tokenToUse =
+        tokenAddr && tokenAddr !== "0x0000000000000000000000000000000000000000"
+          ? tokenAddr
+          : tokenEnv;
 
       const token = tokenToUse ? getToken(tokenToUse, provider) : null;
 
@@ -116,9 +125,19 @@ export default function Result_Page() {
 
           const avgScaled = vcBI > 0n ? (tsBI * 1_000_000n) / vcBI : 0n;
 
+          // ✅ decode outfit for podium render (same as Voting)
+          let outfitObj = null;
+          try {
+            const codeBI = typeof code === "bigint" ? code : BigInt(code.toString());
+            outfitObj = decodeOutfit(codeBI, assets);
+          } catch {
+            outfitObj = null;
+          }
+
           return {
             addr: p,
             outfitCode: code.toString(),
+            outfitObj, // ✅ used for podium
             totalStars: tsBI,
             voteCount: vcBI,
             avgScaled,
@@ -210,12 +229,18 @@ export default function Result_Page() {
         </div>
       </div>
 
-      {/* ✅ Podium layer now fills the screen (fixes the “avatars stuck at top”) */}
+      {/* Podium layer */}
       <div className="result-podium-layer">
         {top3.map((p, i) => {
           const pos = PODIUM_POS[i] || PODIUM_POS[PODIUM_POS.length - 1];
           const name = loadPlayerName(p.addr) || shortenAddress(p.addr);
           const avg = p.voteCount > 0n ? Number(p.avgScaled) / 1_000_000 : 0;
+
+          // size for OutfitStage
+          const baseW = 180;
+          const baseH = 300;
+          const w = Math.round(baseW * (pos.scale || 1));
+          const h = Math.round(baseH * (pos.scale || 1));
 
           return (
             <div
@@ -228,18 +253,31 @@ export default function Result_Page() {
                 textAlign: "center",
               }}
             >
-              <img
-                src={avatarForAddress(p.addr)}
-                alt=""
-                draggable={false}
-                style={{
-                  width: `${95 * pos.scale}px`,
-                  height: "auto",
-                  filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.35))",
-                  userSelect: "none",
-                  pointerEvents: "none",
-                }}
-              />
+              {/* ✅ show REAL outfit if decoded; fallback to random avatar if not */}
+              {p.outfitObj ? (
+                <div
+                  style={{
+                    width: w,
+                    height: h,
+                    filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.35))",
+                  }}
+                >
+                  <OutfitStage outfit={p.outfitObj} width={w} height={h} nameMaps={NAME_MAPS} />
+                </div>
+              ) : (
+                <img
+                  src={avatarForAddress(p.addr)}
+                  alt=""
+                  draggable={false}
+                  style={{
+                    width: `${95 * (pos.scale || 1)}px`,
+                    height: "auto",
+                    filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.35))",
+                    userSelect: "none",
+                    pointerEvents: "none",
+                  }}
+                />
+              )}
 
               <div className="result-badge" title={p.addr}>
                 <b>#{i + 1}</b> {name} • {avg.toFixed(2)}★
