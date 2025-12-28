@@ -9,10 +9,6 @@ export const ERC20_ABI = [
   "function approve(address spender, uint256 amount) returns (bool)",
 ];
 
-export const TOKEN_SALE_ABI = [
-  "function buyTokens() payable",
-];
-
 export const GAME_FACTORY_ABI = [
   "function createRoom(uint256 betAmount, uint256 maxPlayers, uint256 topicId) returns (address)",
   "event RoomCreated(address indexed room, address indexed host, uint256 betAmount, uint256 maxPlayers, uint256 topicId)",
