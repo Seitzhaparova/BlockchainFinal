@@ -229,13 +229,14 @@ export default function Result_Page() {
           style={{
             maxWidth: 1100,
             margin: "0 auto",
-            borderRadius: 26,
-            overflow: "hidden",
-            background: "rgba(255,255,255,0.10)",
-            border: "1px solid rgba(255,255,255,0.18)",
-            backdropFilter: "blur(6px)",
+            background: "transparent",
+            border: "none",
+            borderRadius: 0,
+            overflow: "visible",
+            backdropFilter: "none",
           }}
         >
+
           {/* this box controls podium height */}
           <div style={{ position: "relative", height: "min(720px, 72vh)" }}>
             {/* absolute podium layer inside this container */}
