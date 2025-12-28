@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../main_page.css";
+import assistantImg from "../assets/characters/girl1.png";
 
 import { formatUnits, parseEther, parseUnits, isAddress } from "ethers";
 import { connectWallet, getProvider, getSigner } from "../web3/eth";
@@ -481,15 +482,16 @@ export default function Start_Page() {
               }}
             >
               <img
-                src="assets/characters/girl1.png"
-                alt="Fashion Assistant"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "contain",
-                  filter: "drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3))",
-                }}
-              />
+              src={assistantImg}
+              alt="Fashion Assistant"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                filter: "drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3))",
+              }}
+            />
+
             </div>
 
             {/* Decorative text */}
