@@ -27,6 +27,14 @@ function shortenAddress(address) {
   return address.slice(0, 6) + "..." + address.slice(-4);
 }
 
+function isZeroAddress(a) {
+  return (
+    !a ||
+    a === "0x0000000000000000000000000000000000000000" ||
+    a.toLowerCase?.() === "0x0000000000000000000000000000000000000000"
+  );
+}
+
 // optional: show saved name (Nasiba UI stored it here)
 function loadPlayerName(address) {
   if (!address) return "";
@@ -49,11 +57,14 @@ function avatarForAddress(addr) {
   return AVATARS[idx];
 }
 
-// podium positions
+/**
+ * Podium positions INSIDE the podium container.
+ * (You can tweak these if you want.)
+ */
 const PODIUM_POS = [
-  { left: "50%", top: "55%", scale: 1.15 }, // 1st
-  { left: "31%", top: "65%", scale: 1.0 },  // 2nd
-  { left: "69%", top: "75%", scale: 1.0 },  // 3rd
+  { left: "50%", top: "72%", scale: 1.0 }, // 1st
+  { left: "31%", top: "82%", scale: 0.9 }, // 2nd
+  { left: "69%", top: "84%", scale: 0.9 }, // 3rd
 ];
 
 export default function Result_Page() {
@@ -83,17 +94,14 @@ export default function Result_Page() {
       const provider = await getProvider();
       const room = getRoom(roomId, provider);
 
-      // token address: prefer room.token() (most reliable), fallback to env token
+      // token address: prefer room.token(), fallback to env token
       let tokenAddr = null;
       try {
         tokenAddr = await room.token();
       } catch {}
 
       const { token: tokenEnv } = getAddresses();
-      const tokenToUse =
-        tokenAddr && tokenAddr !== "0x0000000000000000000000000000000000000000"
-          ? tokenAddr
-          : tokenEnv;
+      const tokenToUse = tokenAddr && !isZeroAddress(tokenAddr) ? tokenAddr : tokenEnv;
 
       const token = tokenToUse ? getToken(tokenToUse, provider) : null;
 
@@ -122,7 +130,6 @@ export default function Result_Page() {
           const [ts, vc] = await Promise.all([room.totalStars(p), room.voteCount(p)]);
           const tsBI = BigInt(ts.toString());
           const vcBI = BigInt(vc.toString());
-
           const avgScaled = vcBI > 0n ? (tsBI * 1_000_000n) / vcBI : 0n;
 
           // ✅ decode outfit for podium render (same as Voting)
@@ -137,7 +144,7 @@ export default function Result_Page() {
           return {
             addr: p,
             outfitCode: code.toString(),
-            outfitObj, // ✅ used for podium
+            outfitObj,
             totalStars: tsBI,
             voteCount: vcBI,
             avgScaled,
@@ -169,7 +176,14 @@ export default function Result_Page() {
   }, [roomId]);
 
   return (
-    <div className="result-root">
+    <div
+      className="result-root"
+      style={{
+        minHeight: "100vh",
+        position: "relative",
+        overflowX: "hidden",
+      }}
+    >
       {/* background */}
       <img
         src={bgImg}
@@ -186,19 +200,110 @@ export default function Result_Page() {
         }}
       />
 
-      {/* Top block */}
-      <div style={{ position: "relative", zIndex: 3, padding: "18px 20px" }}>
-        <div className="brand" style={{ marginBottom: 10 }}>
-          <span className="brand-mark">★</span>
-          <span className="brand-name">DressChain</span>
-        </div>
+      {/* Header (brand + back) */}
+      <div style={{ position: "relative", zIndex: 3, padding: "16px 20px 0" }}>
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div className="brand">
+            <span className="brand-mark">★</span>
+            <span className="brand-name">DressChain</span>
+          </div>
 
-        <div className="result-card">
+          <button className="btn outline small" onClick={() => navigate("/")}>
+            Back to Start
+          </button>
+        </div>
+      </div>
+
+      {/* ✅ 1) PODIUM FIRST */}
+      <section style={{ position: "relative", zIndex: 2, padding: "12px 20px 0" }}>
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+            borderRadius: 26,
+            overflow: "hidden",
+            background: "rgba(255,255,255,0.10)",
+            border: "1px solid rgba(255,255,255,0.18)",
+            backdropFilter: "blur(6px)",
+          }}
+        >
+          {/* this box controls podium height */}
+          <div style={{ position: "relative", height: "min(720px, 72vh)" }}>
+            {/* absolute podium layer inside this container */}
+            <div style={{ position: "absolute", inset: 0 }}>
+              {top3.map((p, i) => {
+                const pos = PODIUM_POS[i] || PODIUM_POS[PODIUM_POS.length - 1];
+                const name = loadPlayerName(p.addr) || shortenAddress(p.addr);
+                const avg = p.voteCount > 0n ? Number(p.avgScaled) / 1_000_000 : 0;
+
+                // size for OutfitStage
+                const baseW = 140;
+                const baseH = 240;
+                const w = Math.round(baseW * (pos.scale || 1));
+                const h = Math.round(baseH * (pos.scale || 1));
+
+                return (
+                  <div
+                    key={p.addr}
+                    style={{
+                      position: "absolute",
+                      left: pos.left,
+                      top: pos.top,
+                      transform: "translate(-50%, -100%)",
+                      textAlign: "center",
+                      pointerEvents: "none",
+                      userSelect: "none",
+                    }}
+                  >
+                    {/* real outfit (preferred), fallback avatar */}
+                    {p.outfitObj ? (
+                      <div
+                        style={{
+                          width: w,
+                          height: h,
+                          filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.35))",
+                        }}
+                      >
+                        <OutfitStage outfit={p.outfitObj} width={w} height={h} nameMaps={NAME_MAPS} />
+                      </div>
+                    ) : (
+                      <img
+                        src={avatarForAddress(p.addr)}
+                        alt=""
+                        draggable={false}
+                        style={{
+                          width: `${95 * (pos.scale || 1)}px`,
+                          height: "auto",
+                          filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.35))",
+                        }}
+                      />
+                    )}
+
+                    <div className="result-badge" title={p.addr} style={{ marginTop: 8 }}>
+                      <b>#{i + 1}</b> {name} • {avg.toFixed(2)}★
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ✅ 2) RESULTS INFO SECOND */}
+      <section style={{ position: "relative", zIndex: 3, padding: "14px 20px 0" }}>
+        <div className="result-card" style={{ maxWidth: 980, margin: "0 auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
             <h2 style={{ margin: 0 }}>Results</h2>
-            <button className="btn outline small" onClick={() => navigate("/")}>
-              Back to Start
-            </button>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
@@ -227,69 +332,11 @@ export default function Result_Page() {
             </div>
           )}
         </div>
-      </div>
+      </section>
 
-      {/* Podium layer */}
-      <div className="result-podium-layer">
-        {top3.map((p, i) => {
-          const pos = PODIUM_POS[i] || PODIUM_POS[PODIUM_POS.length - 1];
-          const name = loadPlayerName(p.addr) || shortenAddress(p.addr);
-          const avg = p.voteCount > 0n ? Number(p.avgScaled) / 1_000_000 : 0;
-
-          // size for OutfitStage
-          const baseW = 140;
-          const baseH = 240;
-          const w = Math.round(baseW * (pos.scale || 1));
-          const h = Math.round(baseH * (pos.scale || 1));
-
-          return (
-            <div
-              key={p.addr}
-              style={{
-                position: "absolute",
-                left: pos.left,
-                top: pos.top,
-                transform: "translate(-50%, -100%)",
-                textAlign: "center",
-              }}
-            >
-              {/* ✅ show REAL outfit if decoded; fallback to random avatar if not */}
-              {p.outfitObj ? (
-                <div
-                  style={{
-                    width: w,
-                    height: h,
-                    filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.35))",
-                  }}
-                >
-                  <OutfitStage outfit={p.outfitObj} width={w} height={h} nameMaps={NAME_MAPS} />
-                </div>
-              ) : (
-                <img
-                  src={avatarForAddress(p.addr)}
-                  alt=""
-                  draggable={false}
-                  style={{
-                    width: `${95 * (pos.scale || 1)}px`,
-                    height: "auto",
-                    filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.35))",
-                    userSelect: "none",
-                    pointerEvents: "none",
-                  }}
-                />
-              )}
-
-              <div className="result-badge" title={p.addr}>
-                <b>#{i + 1}</b> {name} • {avg.toFixed(2)}★
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Leaderboard */}
-      <div style={{ position: "relative", zIndex: 3, padding: "0 20px 24px" }}>
-        <div className="result-card result-leaderboard">
+      {/* ✅ 3) LEADERBOARD THIRD */}
+      <section style={{ position: "relative", zIndex: 3, padding: "14px 20px 26px" }}>
+        <div className="result-card result-leaderboard" style={{ maxWidth: 980, margin: "0 auto" }}>
           <h3 style={{ marginTop: 0 }}>Leaderboard (computed from totalStars/voteCount)</h3>
 
           {rows.length === 0 ? (
@@ -329,7 +376,7 @@ export default function Result_Page() {
             </div>
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

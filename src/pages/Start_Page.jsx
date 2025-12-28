@@ -469,7 +469,7 @@ export default function Start_Page() {
               }}
             >
               <img
-                src="src/assets/characters/girl1.png"
+                src="../assets/characters/girl1.png"
                 alt="Fashion Assistant"
                 style={{
                   width: "100%",
