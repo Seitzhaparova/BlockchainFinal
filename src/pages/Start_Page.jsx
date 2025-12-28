@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../main_page.css";
-import assistantImg from "../assets/characters/girl1.png";
 
 import { formatUnits, parseEther, parseUnits, isAddress } from "ethers";
 import { connectWallet, getProvider, getSigner } from "../web3/eth";
@@ -14,6 +13,9 @@ import {
   getToken,
   getTokenSale,
 } from "../web3/contracts";
+
+// ✅ fix for assistant image (Vite way)
+import assistantImg from "../assets/characters/girl1.png";
 
 function shortenAddress(address) {
   if (!address) return "";
@@ -31,7 +33,11 @@ export default function Start_Page() {
   const [tokenBalance, setTokenBalance] = useState("0");
 
   const [tokensPerEth, setTokensPerEth] = useState(null);
+  const [saleEthLiquidity, setSaleEthLiquidity] = useState("0");
+
   const [ethToSpend, setEthToSpend] = useState("");
+  const [tokensToSell, setTokensToSell] = useState("");
+  const [sellQuoteEth, setSellQuoteEth] = useState("");
 
   const [betTokens, setBetTokens] = useState("10");
   const [maxPlayers, setMaxPlayers] = useState("4");
@@ -40,14 +46,10 @@ export default function Start_Page() {
   const [topicFixed, setTopicFixed] = useState("0");
 
   const [joinRoomInput, setJoinRoomInput] = useState("");
-
   const [recentRooms, setRecentRooms] = useState([]);
 
-  const {
-    token: TOKEN_ADDR,
-    sale: SALE_ADDR,
-    factory: FACTORY_ADDR,
-  } = getAddresses();
+  const { token: TOKEN_ADDR, sale: SALE_ADDR, factory: FACTORY_ADDR } = getAddresses();
+
   const hasConfig = useMemo(() => {
     try {
       assertAddresses();
@@ -77,42 +79,65 @@ export default function Start_Page() {
     } catch {}
   }
 
-    async function refresh() {
-      if (!hasConfig || !account) return;
+  async function refresh() {
+    if (!hasConfig || !account) return;
+
+    try {
+      const provider = await getProvider();
+      const token = getToken(TOKEN_ADDR, provider);
+      const sale = getTokenSale(SALE_ADDR, provider);
+
+      const [sym, dec, bal] = await Promise.all([
+        token.symbol(),
+        token.decimals(),
+        token.balanceOf(account),
+      ]);
+
+      setTokenSymbol(sym);
+      setTokenDecimals(Number(dec));
+      setTokenBalance(formatUnits(bal, Number(dec)));
+
+      // rate + liquidity (don’t let UI break if sale call fails)
+      try {
+        const rate = await sale.tokensPerEth();
+        setTokensPerEth(rate.toString());
+      } catch {
+        setTokensPerEth(null);
+      }
+
+      try {
+        const ethBal = await provider.getBalance(SALE_ADDR);
+        setSaleEthLiquidity(formatUnits(ethBal, 18));
+      } catch {
+        setSaleEthLiquidity("0");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  // estimate ETH you’ll receive for selling tokens
+  useEffect(() => {
+    (async () => {
+      if (!hasConfig || !SALE_ADDR) return setSellQuoteEth("");
+      const t = String(tokensToSell || "").replace(",", ".").trim();
+      const n = Number(t);
+      if (!Number.isFinite(n) || n <= 0) return setSellQuoteEth("");
 
       try {
         const provider = await getProvider();
-        const token = getToken(TOKEN_ADDR, provider);
         const sale = getTokenSale(SALE_ADDR, provider);
+        const amt = parseUnits(t, tokenDecimals);
 
-        // ✅ always fetch balance even if "rate" call fails
-        const [sym, dec, bal] = await Promise.all([
-          token.symbol(),
-          token.decimals(),
-          token.balanceOf(account),
-        ]);
-
-        const decNum = Number(dec);
-        setTokenSymbol(sym);
-        setTokenDecimals(decNum);
-        setTokenBalance(formatUnits(bal, decNum));
-
-        // ✅ rate is optional (do NOT crash refresh)
-        let rate = null;
-        try {
-          if (typeof sale.tokensPerEth === "function") rate = await sale.tokensPerEth();
-          else if (typeof sale.TOKENS_PER_ETH === "function") rate = await sale.TOKENS_PER_ETH();
-          else if (typeof sale.rate === "function") rate = await sale.rate();
-        } catch (err) {
-          console.warn("TokenSale rate read failed:", err);
-        }
-
-        setTokensPerEth(rate ? rate.toString() : null);
-      } catch (e) {
-        console.error(e);
+        // contract quote
+        const ethOut = await sale.quoteEthForTokens(amt);
+        setSellQuoteEth(formatUnits(ethOut, 18));
+      } catch {
+        setSellQuoteEth("");
       }
-    }
-
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokensToSell, tokenDecimals, hasConfig, SALE_ADDR]);
 
   useEffect(() => {
     loadRecents();
@@ -151,8 +176,7 @@ export default function Start_Page() {
 
     const ethStr = String(ethToSpend).replace(",", ".").trim();
     const ethNum = Number(ethStr);
-    if (!Number.isFinite(ethNum) || ethNum <= 0)
-      return setStatus("Enter ETH amount > 0");
+    if (!Number.isFinite(ethNum) || ethNum <= 0) return setStatus("Enter ETH amount > 0");
 
     try {
       setStatus("Buying tokens... confirm MetaMask");
@@ -167,9 +191,43 @@ export default function Start_Page() {
       await refresh();
     } catch (e) {
       console.error(e);
-      setStatus(
-        "Buy failed. Check Sepolia ETH + TokenSale funded with tokens."
-      );
+      setStatus("Buy failed. Check Sepolia ETH + TokenSale funded with tokens.");
+    }
+  }
+
+  async function sellTokensForEth() {
+    if (!hasConfig) return setStatus("Missing .env contract addresses.");
+    if (!account) return setStatus("Connect wallet first.");
+
+    const tStr = String(tokensToSell).replace(",", ".").trim();
+    const tNum = Number(tStr);
+    if (!Number.isFinite(tNum) || tNum <= 0) return setStatus("Enter token amount > 0");
+
+    try {
+      setStatus("Selling tokens... confirm MetaMask (approve + sell)");
+      const signer = await getSigner();
+      const token = getToken(TOKEN_ADDR, signer);
+      const sale = getTokenSale(SALE_ADDR, signer);
+
+      const amt = parseUnits(tStr, tokenDecimals);
+
+      // approve if needed
+      const allowance = await token.allowance(account, SALE_ADDR);
+      if (allowance < amt) {
+        const txA = await token.approve(SALE_ADDR, amt);
+        await txA.wait();
+      }
+
+      // sell
+      const tx = await sale.sellTokens(amt);
+      await tx.wait();
+
+      setStatus("Sold ✅ ETH sent to your wallet");
+      setTokensToSell("");
+      await refresh();
+    } catch (e) {
+      console.error(e);
+      setStatus("Sell failed. Sale must have enough ETH liquidity + you need gas ETH.");
     }
   }
 
@@ -205,9 +263,7 @@ export default function Start_Page() {
       }
 
       if (!roomAddr || !isAddress(roomAddr)) {
-        setStatus(
-          "Game created, but room address not detected. (Event parsing issue)"
-        );
+        setStatus("Game created, but room address not detected. (Event parsing issue)");
         return;
       }
 
@@ -256,12 +312,11 @@ export default function Start_Page() {
 
       <main className="start-main">
         <div className="start-card">
-          <h1 className="start-title">On-Chain Dress-Up</h1>
+          <h1 className="start-title">Multiplayer On-Chain Dress-Up</h1>
 
           {!hasConfig && (
             <div className="status-bar">
-              ⚠️ Add deployed addresses into <b>.env</b>: VITE_TOKEN_ADDRESS /
-              VITE_TOKEN_SALE_ADDRESS / VITE_GAME_FACTORY_ADDRESS
+              ⚠️ Add deployed addresses into <b>.env</b>: VITE_TOKEN_ADDRESS / VITE_TOKEN_SALE_ADDRESS / VITE_GAME_FACTORY_ADDRESS
             </div>
           )}
 
@@ -269,10 +324,13 @@ export default function Start_Page() {
             {account ? "Wallet connected" : "Connect MetaMask (Sepolia)"}
           </button>
 
+          {/* BUY */}
           <div className="buy-section">
             <div className="buy-label">
               Buy tokens with ETH{" "}
-              {tokensPerEth ? `(rate: ${formatUnits(tokensPerEth, tokenDecimals)} ${tokenSymbol} / 1 ETH)` : ""}
+              {tokensPerEth
+                ? `(rate: ${formatUnits(tokensPerEth, tokenDecimals)} ${tokenSymbol} / 1 ETH)`
+                : ""}
             </div>
             <div className="buy-row">
               <input
@@ -287,6 +345,39 @@ export default function Start_Page() {
             </div>
           </div>
 
+          {/* SELL */}
+          <div className="buy-section" style={{ marginTop: 14 }}>
+            <div className="buy-label">
+              Receive ETH from tokens{" "}
+              <span style={{ opacity: 0.85 }}>
+                (sale ETH liquidity: {saleEthLiquidity} ETH)
+              </span>
+            </div>
+
+            <div className="buy-row">
+              <input
+                className="buy-input"
+                placeholder={`Token amount (e.g. 50 ${tokenSymbol})`}
+                value={tokensToSell}
+                onChange={(e) => setTokensToSell(e.target.value)}
+              />
+              <button className="btn small buy-btn" onClick={sellTokensForEth}>
+                Sell
+              </button>
+            </div>
+
+            {sellQuoteEth ? (
+              <div className="buy-hint">
+                Estimated receive: <b>{sellQuoteEth} ETH</b>
+              </div>
+            ) : (
+              <div className="buy-hint">
+                Tip: You still need a tiny amount of Sepolia ETH for gas (approve + sell).
+              </div>
+            )}
+          </div>
+
+          {/* CREATE */}
           <div className="join-section">
             <div className="join-label">Create a new room</div>
 
@@ -310,15 +401,7 @@ export default function Start_Page() {
               </button>
             </div>
 
-            <div
-              style={{
-                marginTop: 10,
-                display: "flex",
-                gap: 10,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
+            <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <label style={{ fontSize: 12, opacity: 0.85 }}>
                 <input
                   type="radio"
@@ -362,6 +445,7 @@ export default function Start_Page() {
             </div>
           </div>
 
+          {/* JOIN */}
           <div className="join-section">
             <div className="join-label">Join existing room</div>
             <div className="join-row">
@@ -377,6 +461,7 @@ export default function Start_Page() {
             </div>
           </div>
 
+          {/* RECENTS */}
           {recentRooms.length > 0 && (
             <div className="join-section">
               <div className="join-label">Recent rooms</div>
@@ -399,10 +484,9 @@ export default function Start_Page() {
           {status && <div className="status-bar">{status}</div>}
         </div>
 
-        {/* ДОБАВЛЕННАЯ ПРАВАЯ КОЛОНКА С ДЕВУШКОЙ */}
+        {/* Right column assistant */}
         <div className="start-side">
           <div className="side-silhouette">
-            {/* Speech bubble */}
             <div
               style={{
                 position: "relative",
@@ -422,46 +506,28 @@ export default function Start_Page() {
             >
               {!account ? (
                 <>
-                  <div
-                    style={{
-                      fontWeight: "bold",
-                      marginBottom: "8px",
-                      color: "#ff4da6",
-                    }}
-                  >
+                  <div style={{ fontWeight: "bold", marginBottom: "8px", color: "#ff4da6" }}>
                     👋 Welcome, fashionista!
                   </div>
-                  <div>
-                    To start the game, connect your MetaMask crypto wallet!
-                  </div>
+                  <div>To start the game, connect your MetaMask crypto wallet!</div>
                 </>
               ) : (
                 <>
-                  <div
-                    style={{
-                      fontWeight: "bold",
-                      marginBottom: "8px",
-                      color: "#ff4da6",
-                    }}
-                  >
+                  <div style={{ fontWeight: "bold", marginBottom: "8px", color: "#ff4da6" }}>
                     🎉 Awesome!
                   </div>
-                  <div>
-                    Ready to walk the blockchain runway? Create a game or join
-                    an existing one!
-                  </div>
+                  <div>Ready to walk the blockchain runway? Create a game or join an existing one!</div>
                 </>
               )}
 
-              {/* Bubble tail */}
               <div
                 style={{
                   position: "absolute",
                   bottom: "-12px",
                   left: "50%",
                   transform: "translateX(-50%)",
-                  width: "0",
-                  height: "0",
+                  width: 0,
+                  height: 0,
                   borderLeft: "12px solid transparent",
                   borderRight: "12px solid transparent",
                   borderTop: "12px solid rgba(255, 255, 255, 0.95)",
@@ -469,7 +535,6 @@ export default function Start_Page() {
               />
             </div>
 
-            {/* Картинка девушки */}
             <div
               style={{
                 position: "relative",
@@ -482,19 +547,17 @@ export default function Start_Page() {
               }}
             >
               <img
-              src={assistantImg}
-              alt="Fashion Assistant"
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-                filter: "drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3))",
-              }}
-            />
-
+                src={assistantImg}
+                alt="Fashion Assistant"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  filter: "drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3))",
+                }}
+              />
             </div>
 
-            {/* Decorative text */}
             <div
               className="silhouette-inner"
               style={{
